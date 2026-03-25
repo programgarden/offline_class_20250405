@@ -1,0 +1,1 @@
+- [Turtle Trading Project](plans/2026-03-25-turtle-trading-bot.md) — LS증권 해외주식 터틀 자동매매 모의투자 프로젝트 계획서

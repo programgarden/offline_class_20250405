@@ -1,0 +1,155 @@
+import aiosqlite
+import config
+from datetime import datetime
+
+
+async def _connect():
+    return aiosqlite.connect(config.DB_PATH)
+
+
+# ── Settings ──────────────────────────────────────────────
+
+async def get_setting(key: str) -> str | None:
+    async with await _connect() as db:
+        cur = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
+async def set_setting(key: str, value: str):
+    async with await _connect() as db:
+        await db.execute(
+            "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = ?",
+            (value, key),
+        )
+        await db.commit()
+
+
+async def get_all_settings() -> dict[str, str]:
+    async with await _connect() as db:
+        cur = await db.execute("SELECT key, value FROM settings")
+        rows = await cur.fetchall()
+        return {r[0]: r[1] for r in rows}
+
+
+# ── Stock Analysis ────────────────────────────────────────
+
+async def save_analysis(rows: list[dict]):
+    """분석 결과 일괄 저장. rows = [{symbol, exchange_code, company_name, momentum_score, financial_score, total_score, selected}]"""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    async with await _connect() as db:
+        await db.execute("DELETE FROM stock_analysis WHERE analysis_date = ?", (today,))
+        for r in rows:
+            await db.execute(
+                """INSERT INTO stock_analysis
+                   (analysis_date, symbol, exchange_code, company_name,
+                    momentum_score, financial_score, total_score, selected)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (today, r["symbol"], r["exchange_code"], r.get("company_name", ""),
+                 r.get("momentum_score", 0), r.get("financial_score", 0),
+                 r.get("total_score", 0), r.get("selected", 0)),
+            )
+        await db.commit()
+
+
+async def get_selected_stocks(date: str | None = None) -> list[dict]:
+    date = date or datetime.utcnow().strftime("%Y-%m-%d")
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM stock_analysis WHERE analysis_date = ? AND selected = 1 ORDER BY total_score DESC",
+            (date,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Positions ─────────────────────────────────────────────
+
+async def upsert_position(symbol: str, exchange_code: str, quantity: int,
+                          avg_buy_price: float, highest_price: float,
+                          trailing_stop_price: float, atr: float, entry_date: str):
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO positions
+               (symbol, exchange_code, quantity, avg_buy_price, highest_price,
+                trailing_stop_price, atr, entry_date, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(symbol) DO UPDATE SET
+                 quantity = excluded.quantity,
+                 avg_buy_price = excluded.avg_buy_price,
+                 highest_price = excluded.highest_price,
+                 trailing_stop_price = excluded.trailing_stop_price,
+                 atr = excluded.atr,
+                 updated_at = datetime('now')""",
+            (symbol, exchange_code, quantity, avg_buy_price, highest_price,
+             trailing_stop_price, atr, entry_date),
+        )
+        await db.commit()
+
+
+async def get_positions() -> list[dict]:
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM positions")
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_position(symbol: str) -> dict | None:
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM positions WHERE symbol = ?", (symbol,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_position(symbol: str):
+    async with await _connect() as db:
+        await db.execute("DELETE FROM positions WHERE symbol = ?", (symbol,))
+        await db.commit()
+
+
+# ── Trades ────────────────────────────────────────────────
+
+async def save_trade(symbol: str, exchange_code: str, order_type: str,
+                     order_no: str, quantity: int, price: float,
+                     reason: str, is_dry_run: bool = False):
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO trades
+               (symbol, exchange_code, order_type, order_no, quantity, price,
+                amount, reason, is_dry_run)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (symbol, exchange_code, order_type, order_no, quantity, price,
+             quantity * price, reason, int(is_dry_run)),
+        )
+        await db.commit()
+
+
+async def get_today_trades() -> list[dict]:
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM trades WHERE executed_at >= ? ORDER BY executed_at DESC",
+            (today,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Daily Reports ─────────────────────────────────────────
+
+async def save_daily_report(report: dict):
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO daily_reports
+               (report_date, starting_balance, ending_balance, daily_pnl,
+                daily_pnl_rate, total_trades, winning_trades, losing_trades,
+                risk_stop_triggered)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (report["report_date"], report.get("starting_balance", 0),
+             report.get("ending_balance", 0), report.get("daily_pnl", 0),
+             report.get("daily_pnl_rate", 0), report.get("total_trades", 0),
+             report.get("winning_trades", 0), report.get("losing_trades", 0),
+             report.get("risk_stop_triggered", 0)),
+        )
+        await db.commit()

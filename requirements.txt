@@ -1,1 +1,6 @@
 programgarden-finance==1.4.3
+aiosqlite>=0.20.0
+APScheduler>=3.10.4
+python-telegram-bot>=21.0
+python-dotenv>=1.0.0
+yfinance>=0.2.36
