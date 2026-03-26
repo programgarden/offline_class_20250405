@@ -59,12 +59,19 @@ class LSClient:
         if resp.block3:
             for item in resp.block3:
                 if item.CrcyCode == "USD":
+                    fcurr_ord = float(item.FcurrOrdAbleAmt)
+                    prexch_ord = float(item.PrexchOrdAbleAmt)
                     result = {
                         "deposit": float(item.FcurrDps),
-                        "orderable": float(item.FcurrOrdAbleAmt),
+                        "orderable": fcurr_ord + prexch_ord,  # 외화+사전환전 합산
+                        "orderable_fcurr": fcurr_ord,
+                        "orderable_prexch": prexch_ord,
                         "exchange_rate": float(item.BaseXchrat),
                     }
                     break
+        # 원화 잔고
+        if resp.block4:
+            result["won_balance"] = float(resp.block4.WonDpsBalAmt)
         return result
 
     # ── 보유종목 조회 ────────────────────────────────────
@@ -73,7 +80,7 @@ class LSClient:
         """보유종목 목록 조회"""
         accno = self.stock.accno()
         resp = await accno.cosoq00201(
-            body=COSOQ00201InBlock1(RecCnt=1, BaseDt="", CrcyCode="USD", AstkBalTpCode=""),
+            body=COSOQ00201InBlock1(RecCnt=1, BaseDt="", CrcyCode="ALL", AstkBalTpCode="00"),
             options=_rate_opts,
         ).req_async()
 
