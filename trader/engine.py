@@ -11,9 +11,10 @@ log = logging.getLogger(__name__)
 
 
 class TradingEngine:
-    def __init__(self, client: LSClient, notify_fn=None):
+    def __init__(self, client: LSClient, notify_fn=None, on_buy_fn=None):
         self.client = client
         self.notify = notify_fn or (lambda msg: None)
+        self.on_buy = on_buy_fn  # 매수 후 콜백 (실시간 구독용)
 
     async def _is_paused(self) -> bool:
         paused = await repo.get_setting("trading_paused")
@@ -116,6 +117,13 @@ class TradingEngine:
             log.info(msg)
             await self.notify(msg)
             per_stock -= quantity * price
+
+            # 실시간 구독 추가 (WebSocket)
+            if self.on_buy:
+                try:
+                    await self.on_buy(symbol, exchange_code)
+                except Exception as e:
+                    log.warning("실시간 구독 추가 실패: %s - %s", symbol, e)
 
     # ── 매도 (트레일링 스탑) ─────────────────────────────
 

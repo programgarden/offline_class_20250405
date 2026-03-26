@@ -1,4 +1,5 @@
 """메인 스케줄러: 24시간 자동 스케줄링 (미국 동부시간 기준)"""
+import asyncio
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -27,6 +28,7 @@ class TurtleScheduler:
         self.realtime: RealtimeMonitor | None = None
         self.scheduler = AsyncIOScheduler(timezone=ET)
         self._selected_stocks: list[dict] = []
+        self._stop_lock = asyncio.Lock()  # 트레일링 스탑 동시 실행 방지
 
     async def start(self):
         """시스템 시작"""
@@ -37,7 +39,11 @@ class TurtleScheduler:
         await self.telegram.start()
 
         # 엔진 초기화
-        self.engine = TradingEngine(self.client, notify_fn=self.telegram.send)
+        self.engine = TradingEngine(
+            self.client,
+            notify_fn=self.telegram.send,
+            on_buy_fn=self._on_new_buy,
+        )
         self.risk = RiskManager(self.client, self.engine, notify_fn=self.telegram.send)
         self.realtime = RealtimeMonitor(self.client, on_price_update=self._on_realtime_price)
 
@@ -140,7 +146,8 @@ class TurtleScheduler:
     async def _job_check_stops(self):
         """트레일링 스탑 체크"""
         try:
-            await self.engine.check_trailing_stops()
+            async with self._stop_lock:
+                await self.engine.check_trailing_stops()
         except Exception as e:
             log.exception("트레일링 스탑 체크 실패")
 
@@ -160,8 +167,13 @@ class TurtleScheduler:
 
             buys = [t for t in trades if t["order_type"] == "BUY"]
             sells = [t for t in trades if t["order_type"] == "SELL"]
-            winning = [t for t in sells if t["reason"] == "TRAILING_STOP"
-                       and t["price"] > 0]  # 수익 거래 (간이 판단)
+
+            # 승패 판정: 매도가 vs 매수가 비교
+            winning = []
+            for sell in sells:
+                buy_price = await repo.get_last_buy_price(sell["symbol"])
+                if buy_price and sell["price"] > buy_price:
+                    winning.append(sell)
 
             report = {
                 "report_date": datetime.now(ET).strftime("%Y-%m-%d"),
@@ -202,34 +214,42 @@ class TurtleScheduler:
         except Exception as e:
             log.exception("리스크 초기화 실패")
 
+    # ── 신규 매수 콜백 ─────────────────────────────────────
+
+    async def _on_new_buy(self, symbol: str, exchange_code: str):
+        """매수 후 실시간 구독 추가"""
+        if self.realtime:
+            await self.realtime.subscribe(symbol, exchange_code)
+
     # ── 실시간 콜백 ──────────────────────────────────────
 
     async def _on_realtime_price(self, symbol: str, price: float):
         """실시간 체결 시 트레일링 스탑 업데이트"""
-        pos = await repo.get_position(symbol)
-        if not pos:
-            return
+        async with self._stop_lock:
+            pos = await repo.get_position(symbol)
+            if not pos:
+                return
 
-        settings = await repo.get_all_settings()
-        atr_mult = float(settings.get("atr_multiplier", "3.0"))
+            settings = await repo.get_all_settings()
+            atr_mult = float(settings.get("atr_multiplier", "3.0"))
 
-        if price > pos["highest_price"]:
-            new_stop = round(price - pos["atr"] * atr_mult, 2)
-            await repo.upsert_position(
-                symbol=pos["symbol"],
-                exchange_code=pos["exchange_code"],
-                quantity=pos["quantity"],
-                avg_buy_price=pos["avg_buy_price"],
-                highest_price=price,
-                trailing_stop_price=new_stop,
-                atr=pos["atr"],
-                entry_date=pos["entry_date"],
-            )
-        elif price <= pos["trailing_stop_price"]:
-            mode = await repo.get_setting("mode") or "dry"
-            await self.engine._sell_position(pos, price, "TRAILING_STOP", mode)
-            if self.realtime:
-                await self.realtime.unsubscribe(symbol, pos["exchange_code"])
+            if price > pos["highest_price"]:
+                new_stop = round(price - pos["atr"] * atr_mult, 2)
+                await repo.upsert_position(
+                    symbol=pos["symbol"],
+                    exchange_code=pos["exchange_code"],
+                    quantity=pos["quantity"],
+                    avg_buy_price=pos["avg_buy_price"],
+                    highest_price=price,
+                    trailing_stop_price=new_stop,
+                    atr=pos["atr"],
+                    entry_date=pos["entry_date"],
+                )
+            elif price <= pos["trailing_stop_price"]:
+                mode = await repo.get_setting("mode") or "dry"
+                await self.engine._sell_position(pos, price, "TRAILING_STOP", mode)
+                if self.realtime:
+                    await self.realtime.unsubscribe(symbol, pos["exchange_code"])
 
     async def stop(self):
         """시스템 종료"""

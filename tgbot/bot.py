@@ -61,9 +61,17 @@ class TelegramBot:
             except Exception as e:
                 log.error("텔레그램 전송 실패: %s", e)
 
+    # ── 인증 ───────────────────────────────────────────
+
+    def _is_authorized(self, update: Update) -> bool:
+        """허가된 chat_id인지 확인"""
+        return str(update.effective_chat.id) == str(self._chat_id)
+
     # ── 명령어 핸들러 ────────────────────────────────────
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         text = (
             "<b>터틀 트레이딩 봇 명령어</b>\n\n"
             "/help - 명령어 목록\n"
@@ -83,6 +91,8 @@ class TelegramBot:
         await update.message.reply_text(text, parse_mode="HTML")
 
     async def _cmd_status(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         positions = await repo.get_positions()
         mode = await repo.get_setting("mode") or config.DEFAULT_MODE
         paused = await repo.get_setting("trading_paused") == "1"
@@ -101,6 +111,8 @@ class TelegramBot:
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     async def _cmd_mode(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         args = ctx.args
         if not args:
             mode = await repo.get_setting("mode") or config.DEFAULT_MODE
@@ -116,6 +128,8 @@ class TelegramBot:
         await update.message.reply_text(f"모드 변경: <b>{new_mode}</b>", parse_mode="HTML")
 
     async def _cmd_set(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         if len(ctx.args) < 2:
             await update.message.reply_text(
                 "사용법: /set [channel|atr|stocks|ratio] [값]"
@@ -143,6 +157,8 @@ class TelegramBot:
         await update.message.reply_text(f"설정 변경: <b>{param} = {value}</b>", parse_mode="HTML")
 
     async def _cmd_settings(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         settings = await repo.get_all_settings()
         lines = ["<b>현재 설정값</b>\n"]
         for k, v in settings.items():
@@ -150,14 +166,20 @@ class TelegramBot:
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     async def _cmd_stop(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         await repo.set_setting("trading_paused", "1")
         await update.message.reply_text("매매 일시 중단됨")
 
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         await repo.set_setting("trading_paused", "0")
         await update.message.reply_text("매매 재개됨")
 
     async def _cmd_report(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            return
         trades = await repo.get_today_trades()
         if not trades:
             await update.message.reply_text("오늘 매매 내역 없음")

@@ -136,6 +136,18 @@ async def get_today_trades() -> list[dict]:
         return [dict(r) for r in await cur.fetchall()]
 
 
+async def get_last_buy_price(symbol: str) -> float | None:
+    """종목의 가장 최근 매수 가격 조회"""
+    async with await _connect() as db:
+        cur = await db.execute(
+            "SELECT price FROM trades WHERE symbol = ? AND order_type = 'BUY' "
+            "ORDER BY executed_at DESC LIMIT 1",
+            (symbol,),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
 # ── Daily Reports ─────────────────────────────────────────
 
 async def save_daily_report(report: dict):
