@@ -17,6 +17,7 @@ graph TB
         RT[실시간 모니터]
     end
 
+    WEB[웹 대시보드<br/>FastAPI :8000]
     TG[텔레그램 봇]
     DB[(SQLite DB)]
     LS[LS증권 API]
@@ -32,6 +33,9 @@ graph TB
     TG -->|알림 전송| 사용자
     사용자 -->|명령어| TG
     TG -->|설정 변경/조회| DB
+    WEB -->|상태/설정 조회| DB
+    WEB -->|예수금/보유종목| LS
+    사용자 -->|브라우저 접속| WEB
 ```
 
 ## 매매 흐름
@@ -71,18 +75,19 @@ gantt
     axisFormat %H:%M
 
     section 분석
-    장마감 리포트           :done, 06:00, 30min
+    장마감 리포트           :done, 06:30, 30min
     리스크 초기화           :done, 07:00, 10min
     종목 스크리닝           :active, 17:00, 30min
 
     section 주간거래
-    프리마켓 매수 체크       :04:00, 240min
+    프리마켓 매수 체크 (30분 간격) :04:00, 240min
 
     section 정규장
-    정규장 매매             :09:30, 390min
-    실시간 모니터링          :09:30, 390min
-    리스크 감시 (1분 간격)   :09:30, 390min
-    장마감 정리             :16:00, 10min
+    정규장 매수 체크 (15분 간격)  :09:30, 390min
+    트레일링 스탑 (5분 간격)      :09:30, 390min
+    실시간 모니터링               :09:30, 390min
+    리스크 감시 (1분 간격)        :09:30, 390min
+    장마감 정리                  :16:05, 10min
 ```
 
 ---
@@ -135,16 +140,35 @@ source venv/bin/activate
 python3 main.py
 ```
 
-시작하면 **드라이런 모드**(실제 주문 없이 시뮬레이션)로 동작합니다.
+`data/` 디렉터리는 최초 실행 시 자동 생성됩니다.
 
-### 5. 텔레그램으로 제어
+실행하면 **웹 대시보드**(http://localhost:8000)와 **트레이딩 봇**이 함께 시작됩니다.
+기본값은 **드라이런 모드**(실제 주문 없이 시뮬레이션)입니다.
+
+백그라운드 실행:
+```bash
+nohup python3 main.py > data/bot.log 2>&1 &
+```
+
+### 5. 제어 방법
+
+#### 웹 대시보드 (http://localhost:8000)
+
+브라우저에서 접속하여 실시간으로 봇을 제어할 수 있습니다:
+- 봇 상태 / 예수금 / 보유종목 실시간 확인
+- 모드 전환 (DRY / LIVE)
+- 매매 중단 / 재개
+- 전략 파라미터 변경 (돈치안, ATR, 종목 수, 예수금 비율)
+- 오늘 매매 내역 조회
+- 로그 실시간 확인
+
+#### 텔레그램 봇
 
 | 명령어 | 설명 |
 |--------|------|
 | `/help` | 명령어 목록 |
 | `/status` | 보유종목, 모드, 상태 |
-| `/mode dry` | 드라이런 모드 (기본값) |
-| `/mode live` | 실전 모드 전환 |
+| `/mode dry` / `/mode live` | 모드 전환 |
 | `/set channel 20` | 돈치안 채널 기간 변경 |
 | `/set atr 3.0` | 트레일링 스탑 ATR 배수 |
 | `/set stocks 5` | 최대 보유 종목 수 |
@@ -159,7 +183,7 @@ python3 main.py
 
 ```
 turtle-trading-bot/
-├── main.py                 # 프로그램 시작점
+├── main.py                 # 시작점 (FastAPI + 스케줄러 통합)
 ├── config.py               # 환경 설정 (.env 로드 + 기본값)
 ├── scheduler.py            # 메인 스케줄러 (24시간 루프)
 ├── analyzer/
@@ -173,11 +197,15 @@ turtle-trading-bot/
 │   └── risk_manager.py     # 리스크 관리 (4%/5% 손실 한도)
 ├── tgbot/
 │   └── bot.py              # 텔레그램 봇 (알림 + 명령어)
+├── web/
+│   ├── api.py              # REST API (FastAPI 라우터)
+│   └── dashboard.html      # 웹 대시보드 (단일 HTML)
 ├── database/
 │   ├── models.py           # DB 스키마 정의
 │   └── repository.py       # DB 읽기/쓰기
 ├── data/
-│   └── trading.db          # SQLite 데이터베이스 (자동 생성)
+│   ├── trading.db          # SQLite 데이터베이스 (자동 생성)
+│   └── turtle.log          # 실행 로그
 ├── .env                    # API 키 (비공개)
 ├── .env.example            # 환경변수 템플릿
 └── requirements.txt        # 의존성 목록
@@ -200,6 +228,7 @@ turtle-trading-bot/
 | 항목 | 기술 |
 |------|------|
 | 증권 API | [programgarden-finance](https://pypi.org/project/programgarden-finance/) 1.4.3 |
+| 웹 대시보드 | FastAPI + uvicorn |
 | 비동기 | asyncio + aiosqlite |
 | 스케줄러 | APScheduler |
 | 데이터베이스 | SQLite |

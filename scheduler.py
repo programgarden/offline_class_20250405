@@ -17,6 +17,14 @@ from tgbot.bot import TelegramBot
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
+KST = ZoneInfo("Asia/Seoul")
+
+
+def _now_str() -> str:
+    """한국시간 + 미국동부시간 문자열"""
+    kst = datetime.now(KST).strftime("%H:%M")
+    et = datetime.now(ET).strftime("%H:%M")
+    return f"한국시간 {kst} / 미국동부시간 {et}"
 
 
 class TurtleScheduler:
@@ -32,8 +40,12 @@ class TurtleScheduler:
 
     async def start(self):
         """시스템 시작"""
-        # 로그인
-        await self.client.login()
+        # 로그인 (재시도 포함)
+        try:
+            await self.client.login()
+        except Exception as e:
+            log.critical("LS증권 로그인 실패 - 시스템 시작 불가: %s", e)
+            raise
 
         # 텔레그램 시작
         await self.telegram.start()
@@ -47,12 +59,17 @@ class TurtleScheduler:
         self.risk = RiskManager(self.client, self.engine, notify_fn=self.telegram.send)
         self.realtime = RealtimeMonitor(self.client, on_price_update=self._on_realtime_price)
 
+        # DB에서 선정 종목 로드 (이전 분석 결과 복원)
+        saved = await repo.get_selected_stocks()
+        if saved:
+            self._selected_stocks = saved
+            log.info("DB에서 선정 종목 %d개 로드", len(saved))
+
         # 스케줄 등록 (미국 동부시간 기준)
         self._setup_schedule()
         self.scheduler.start()
 
-        now_et = datetime.now(ET).strftime("%H:%M %Z")
-        msg = f"터틀 트레이딩 봇 시작 (현재 ET: {now_et})"
+        msg = f"터틀 트레이딩 봇 시작 ({_now_str()})"
         log.info(msg)
         await self.telegram.send(msg)
 
@@ -60,6 +77,7 @@ class TurtleScheduler:
         """스케줄 등록 (미국 동부시간)"""
         add = self.scheduler.add_job
 
+        # ── 일일 관리 ────────────────────────────────────
         # 06:30 ET - 장 마감 정리 + 일일 리포트
         add(self._job_daily_report, CronTrigger(hour=6, minute=30, timezone=ET),
             id="daily_report")
@@ -72,29 +90,44 @@ class TurtleScheduler:
         add(self._job_analyze, CronTrigger(hour=17, minute=0, timezone=ET),
             id="analyze")
 
-        # 04:00~08:00 ET - 주간거래(프리마켓 포함) 매수 체크 (30분 간격)
+        # ── 프리마켓 (04:00~09:00 ET) ────────────────────
+        # 매수 체크 (30분 간격)
         add(self._job_check_buy, CronTrigger(hour="4-8", minute="0,30", timezone=ET),
             id="premarket_buy")
 
+        # 트레일링 스탑 체크 (30분 간격) ← 신규 추가
+        add(self._job_check_stops, CronTrigger(hour="4-8", minute="0,30", timezone=ET),
+            id="premarket_stops")
+
+        # 리스크 체크 (30분 간격) ← 신규 추가
+        add(self._job_check_risk, CronTrigger(hour="4-8", minute="0,30", timezone=ET),
+            id="premarket_risk")
+
+        # ── 정규장 (09:30~16:00 ET) ──────────────────────
         # 09:30 ET - 정규장 시작: 잔고 기록 + 실시간 연결
         add(self._job_market_open, CronTrigger(hour=9, minute=30, timezone=ET),
             id="market_open")
 
-        # 09:30~16:00 ET - 정규장 매수 체크 (15분 간격)
+        # 매수 체크 (15분 간격)
         add(self._job_check_buy, CronTrigger(hour="9-15", minute="*/15", timezone=ET),
             id="regular_buy")
 
-        # 09:30~16:00 ET - 트레일링 스탑 체크 (5분 간격)
+        # 트레일링 스탑 체크 (5분 간격)
         add(self._job_check_stops, CronTrigger(hour="9-15", minute="*/5", timezone=ET),
             id="check_stops")
 
-        # 09:30~16:00 ET - 리스크 체크 (1분 간격)
+        # 리스크 체크 (1분 간격)
         add(self._job_check_risk, CronTrigger(hour="9-15", minute="*", timezone=ET),
             id="check_risk")
 
-        # 16:00 ET - 정규장 마감: 실시간 종료
+        # 16:05 ET - 정규장 마감: 실시간 종료
         add(self._job_market_close, CronTrigger(hour=16, minute=5, timezone=ET),
             id="market_close")
+
+        # ── 세션 유지 ────────────────────────────────────
+        # 매 3시간마다 API 세션 헬스 체크 ← 신규 추가
+        add(self._job_health_check, CronTrigger(hour="*/3", minute=0, timezone=ET),
+            id="health_check")
 
     # ── 스케줄 작업 ──────────────────────────────────────
 
@@ -104,7 +137,7 @@ class TurtleScheduler:
         try:
             self._selected_stocks = await screen_stocks(self.client)
             symbols = [s["symbol"] for s in self._selected_stocks]
-            msg = f"종목 분석 완료: {symbols}"
+            msg = f"종목 분석 완료 ({_now_str()})\n선정: {symbols}"
             await self.telegram.send(msg)
         except Exception as e:
             log.exception("종목 분석 실패")
@@ -115,8 +148,16 @@ class TurtleScheduler:
         log.info("정규장 시작")
         try:
             await self.risk.record_starting_balance()
-            await self.realtime.start()
-            await self.telegram.send("정규장 시작 - 실시간 모니터링 가동")
+
+            # 실시간 연결 (실패해도 정규장 진행)
+            try:
+                await self.realtime.start()
+                await self.telegram.send(f"정규장 시작 - 실시간 모니터링 가동 ({_now_str()})")
+            except Exception as e:
+                log.error("실시간 연결 실패 - 폴링 모드로 운영: %s", e)
+                await self.telegram.send(
+                    f"⚠ 정규장 시작 - 실시간 연결 실패, 폴링 모드 ({_now_str()})\n{e}"
+                )
         except Exception as e:
             log.exception("정규장 시작 실패")
             await self.telegram.send(f"정규장 시작 실패: {e}")
@@ -127,7 +168,7 @@ class TurtleScheduler:
         try:
             if self.realtime:
                 await self.realtime.stop()
-            await self.telegram.send("정규장 마감 - 실시간 모니터링 종료")
+            await self.telegram.send(f"정규장 마감 - 실시간 모니터링 종료 ({_now_str()})")
         except Exception as e:
             log.exception("정규장 마감 처리 실패")
 
@@ -142,6 +183,7 @@ class TurtleScheduler:
             await self.engine.check_and_buy(self._selected_stocks)
         except Exception as e:
             log.exception("매수 체크 실패")
+            await self.telegram.send(f"매수 체크 오류: {e}")
 
     async def _job_check_stops(self):
         """트레일링 스탑 체크"""
@@ -150,6 +192,7 @@ class TurtleScheduler:
                 await self.engine.check_trailing_stops()
         except Exception as e:
             log.exception("트레일링 스탑 체크 실패")
+            await self.telegram.send(f"스탑 체크 오류: {e}")
 
     async def _job_check_risk(self):
         """리스크 체크"""
@@ -193,7 +236,7 @@ class TurtleScheduler:
             await repo.save_daily_report(report)
 
             msg = (
-                f"<b>일일 리포트</b>\n\n"
+                f"<b>일일 리포트</b> ({_now_str()})\n\n"
                 f"시작 잔고: ${report['starting_balance']:,.2f}\n"
                 f"종료 잔고: ${report['ending_balance']:,.2f}\n"
                 f"일일 손익: ${report['daily_pnl']:+,.2f} ({report['daily_pnl_rate']:+.1f}%)\n"
@@ -213,6 +256,18 @@ class TurtleScheduler:
             await self.risk.reset_daily()
         except Exception as e:
             log.exception("리스크 초기화 실패")
+
+    async def _job_health_check(self):
+        """API 세션 헬스 체크 (예수금 조회로 확인, 실패 시 재연결)"""
+        try:
+            balance = await self.client.get_balance()
+            if not balance:
+                log.warning("헬스 체크 실패 - 세션 재연결 시도")
+                await self.client.reconnect()
+                await self.telegram.send(f"API 세션 재연결 완료 ({_now_str()})")
+        except Exception as e:
+            log.error("헬스 체크 중 재연결 실패: %s", e)
+            await self.telegram.send(f"API 세션 재연결 실패: {e}")
 
     # ── 신규 매수 콜백 ─────────────────────────────────────
 
@@ -256,6 +311,6 @@ class TurtleScheduler:
         self.scheduler.shutdown(wait=False)
         if self.realtime:
             await self.realtime.stop()
-        await self.telegram.send("터틀 트레이딩 봇 종료")
+        await self.telegram.send(f"터틀 트레이딩 봇 종료 ({_now_str()})")
         await self.telegram.stop()
         log.info("시스템 종료 완료")

@@ -41,6 +41,12 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data", "trading.db")
 RATE_LIMIT_COUNT = 3
 RATE_LIMIT_SECONDS = 1
 
+# 재시도 설정
+API_MAX_RETRIES = 3           # API 호출 최대 재시도 횟수
+API_RETRY_BASE_DELAY = 2      # 재시도 기본 대기(초), 지수 백오프 적용
+WS_MAX_RETRIES = 5            # WebSocket 연결 최대 재시도
+WS_RETRY_BASE_DELAY = 3       # WebSocket 재시도 기본 대기(초)
+
 # 운영 모드
 MODE_DRY = "dry"
 MODE_LIVE = "live"

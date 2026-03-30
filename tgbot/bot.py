@@ -40,7 +40,10 @@ class TelegramBot:
 
         await self.app.initialize()
         await self.app.start()
-        await self.app.updater.start_polling(drop_pending_updates=True)
+        await self.app.updater.start_polling(
+            drop_pending_updates=True,
+            poll_interval=300,  # 5분 간격 폴링
+        )
         log.info("텔레그램 봇 시작됨")
 
     async def stop(self):
