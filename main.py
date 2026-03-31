@@ -15,7 +15,8 @@ Path(__file__).parent.joinpath("data").mkdir(exist_ok=True)
 
 from database.models import init_db
 from scheduler import TurtleScheduler
-from web.api import router as api_router, set_scheduler
+from futures_scheduler import FuturesScheduler
+from web.api import router as api_router, set_scheduler, set_futures_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,19 +29,35 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 bot = TurtleScheduler()
+futures_bot: FuturesScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """앱 시작/종료 시 봇 관리"""
+    """앱 시작/종료 시 봇 관리 (해외주식 + 해외선물)"""
+    global futures_bot
+
     await init_db()
     log.info("데이터베이스 초기화 완료")
 
+    # 해외주식 봇 시작
     await bot.start()
     set_scheduler(bot)
 
+    # 해외선물 봇 시작 (텔레그램 공유)
+    try:
+        futures_bot = FuturesScheduler(notify_fn=bot.telegram.send)
+        await futures_bot.start()
+        set_futures_scheduler(futures_bot)
+        log.info("해외선물 모의투자 봇 시작 완료")
+    except Exception as e:
+        log.error("해외선물 봇 시작 실패 (해외주식 봇은 정상 운영): %s", e)
+        futures_bot = None
+
     yield
 
+    if futures_bot:
+        await futures_bot.stop()
     await bot.stop()
     log.info("프로그램 종료")
 

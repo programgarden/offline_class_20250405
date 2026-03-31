@@ -51,3 +51,48 @@ WS_RETRY_BASE_DELAY = 3       # WebSocket 재시도 기본 대기(초)
 MODE_DRY = "dry"
 MODE_LIVE = "live"
 DEFAULT_MODE = MODE_DRY
+
+# ── 해외선물 설정 ────────────────────────────────────────
+
+# 해외선물 모의투자 API (별도 키 또는 동일 키 사용)
+FUTURES_LS_APPKEY = os.getenv("FUTURES_LS_APPKEY", LS_APPKEY)
+FUTURES_LS_APPSECRETKEY = os.getenv("FUTURES_LS_APPSECRETKEY", LS_APPSECRETKEY)
+
+# 거래 대상 선물 상품 목록 (홍콩거래소 - 모의투자 지원)
+FUTURES_SYMBOLS = [
+    {"base": "HMH", "name": "미니 항셍지수", "exchange": "HKEX", "quarterly": True},
+    {"base": "HMCE", "name": "미니 H주지수", "exchange": "HKEX", "quarterly": True},
+    {"base": "MCA", "name": "MSCI China A50", "exchange": "HKEX", "quarterly": False},
+    {"base": "HSI", "name": "항셍지수", "exchange": "HKEX", "quarterly": False},
+    {"base": "HTI", "name": "항셍테크지수", "exchange": "HKEX", "quarterly": False},
+    {"base": "HCEI", "name": "H주지수", "exchange": "HKEX", "quarterly": False},
+]
+
+# 선물 월코드
+FUTURES_MONTH_CODES = {
+    1: "F", 2: "G", 3: "H", 4: "J", 5: "K", 6: "M",
+    7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z",
+}
+
+# 선물 분기 만기월
+FUTURES_QUARTER_MONTHS = [3, 6, 9, 12]
+
+# 선물 터틀 전략 기본값
+FUTURES_DONCHIAN_PERIOD = 20
+FUTURES_ATR_PERIOD = 20
+FUTURES_ATR_MULTIPLIER = 3.0
+FUTURES_MAX_CONTRACTS = 5       # 최대 동시 보유 종목 수
+FUTURES_RISK_PER_TRADE = 2.0    # 1종목당 리스크 비율 (예수금 대비 %)
+
+# 선물 리스크 관리 (증거금 대비)
+FUTURES_RISK_WARN_PCT = 3.0     # 3% 손실 경고 → 마이너스 종목 청산
+FUTURES_RISK_STOP_PCT = 5.0     # 5% 손실 비상 → 전종목 청산 + 매매 중단
+FUTURES_MARGIN_LIMIT_PCT = 80.0 # 증거금 사용률 80% 초과 시 신규 진입 차단
+
+# 선물 API 속도 제한
+FUTURES_RATE_LIMIT_COUNT = 5
+FUTURES_RATE_LIMIT_SECONDS = 1
+
+# 홍콩거래소 거래 시간 (한국시간 KST = HKT + 1시간)
+# T세션: 10:15~13:00, 14:00~17:30 KST
+# T+1세션(야간): 18:15~04:00 KST

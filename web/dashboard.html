@@ -173,6 +173,45 @@ tr:hover { background: #1c2128; }
     </table>
   </div>
 
+  <!-- 선물 섹션 -->
+  <div class="card card-full" style="border-color:#d29922">
+    <h2 style="color:#d29922">해외선물 모의투자 (홍콩거래소 HKEX 전용)</h2>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+      <div>
+        <div class="stat">
+          <div class="stat-label">매매 상태</div>
+          <div id="futures-trading-badge">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">주문가능</div>
+          <div class="stat-value" id="futures-orderable" style="font-size:1.1em">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">증거금 / 평가손익</div>
+          <div id="futures-margin-info" style="color:#8b949e;font-size:0.9em">-</div>
+        </div>
+        <div class="controls" style="margin-top:8px">
+          <button class="btn btn-success" onclick="futuresControl('start')">선물 재개</button>
+          <button class="btn btn-danger" onclick="futuresControl('stop')">선물 중단</button>
+        </div>
+      </div>
+      <div>
+        <div class="stat-label">포지션</div>
+        <table>
+          <thead><tr><th>종목</th><th>방향</th><th>계약</th><th>진입가</th><th>스탑</th></tr></thead>
+          <tbody id="futures-positions-body"><tr><td colspan="5" style="color:#6e7681">-</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <div class="stat-label">오늘 매매 <span id="futures-trades-count" style="color:#6e7681;font-size:0.85em"></span></div>
+      <table>
+        <thead><tr><th>종목</th><th>구분</th><th>방향</th><th>계약</th><th>가격</th><th>손익</th><th>사유</th></tr></thead>
+        <tbody id="futures-trades-body"><tr><td colspan="7" style="color:#6e7681">-</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- 로그 -->
   <div class="card card-full">
     <h2>로그</h2>
@@ -289,8 +328,68 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+async function loadFuturesStatus() {
+  try {
+    const d = await api('/api/futures/status');
+    const el = document.getElementById('futures-trading-badge');
+    if (d.risk_stopped) el.innerHTML = '<span class="badge badge-warn">리스크 중단</span>';
+    else if (d.trading_paused) el.innerHTML = '<span class="badge badge-off">중단</span>';
+    else el.innerHTML = '<span class="badge badge-on">활성</span>';
+
+    const b = d.balance || {};
+    document.getElementById('futures-orderable').textContent = '$' + (b.orderable || 0).toLocaleString('en', {minimumFractionDigits: 2});
+    document.getElementById('futures-margin-info').textContent =
+      `증거금 $${(b.margin_used||0).toLocaleString('en',{minimumFractionDigits:2})} / 평가손익 $${(b.eval_pnl||0).toFixed(2)}`;
+
+    // 포지션
+    const pbody = document.getElementById('futures-positions-body');
+    const positions = d.holdings || [];
+    if (positions.length === 0) {
+      pbody.innerHTML = '<tr><td colspan="5" style="color:#6e7681">포지션 없음</td></tr>';
+    } else {
+      pbody.innerHTML = positions.map(p => `<tr>
+        <td>${p.symbol}</td>
+        <td>${p.direction}</td>
+        <td>${p.quantity}</td>
+        <td>${p.entry_price}</td>
+        <td>${p.current_price}</td>
+      </tr>`).join('');
+    }
+  } catch(e) { console.error('futures status error:', e); }
+}
+
+async function loadFuturesTrades() {
+  try {
+    const d = await api('/api/futures/trades');
+    document.getElementById('futures-trades-count').textContent = `(${d.count}건)`;
+    const tbody = document.getElementById('futures-trades-body');
+    if (d.count === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="color:#6e7681">오늘 매매 없음</td></tr>';
+    } else {
+      tbody.innerHTML = d.trades.slice(0, 10).map(t => {
+        const cls = t.order_type === 'ENTRY' ? 'color:#3fb950' : 'color:#f85149';
+        const pnl = t.pnl != null ? `$${t.pnl.toFixed(2)}` : '-';
+        return `<tr>
+          <td>${t.symbol}</td>
+          <td style="${cls}">${t.order_type}</td>
+          <td>${t.direction}</td>
+          <td>${t.quantity}</td>
+          <td>${t.price}</td>
+          <td>${pnl}</td>
+          <td>${t.reason}</td>
+        </tr>`;
+      }).join('');
+    }
+  } catch(e) { console.error('futures trades error:', e); }
+}
+
+async function futuresControl(action) {
+  await api(`/api/futures/control/${action}`, {method:'POST'});
+  refreshAll();
+}
+
 async function refreshAll() {
-  await Promise.all([loadStatus(), loadSettings(), loadTrades(), loadLogs()]);
+  await Promise.all([loadStatus(), loadSettings(), loadTrades(), loadFuturesStatus(), loadFuturesTrades(), loadLogs()]);
 }
 
 async function setMode(mode) {

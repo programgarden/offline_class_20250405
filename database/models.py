@@ -62,6 +62,63 @@ CREATE TABLE IF NOT EXISTS settings (
     description TEXT,
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS futures_positions (
+    id INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL UNIQUE,
+    base_symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    avg_entry_price REAL NOT NULL,
+    highest_price REAL NOT NULL,
+    lowest_price REAL NOT NULL,
+    trailing_stop_price REAL NOT NULL,
+    atr REAL NOT NULL,
+    tick_size REAL NOT NULL,
+    tick_value REAL NOT NULL,
+    entry_date TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS futures_trades (
+    id INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    base_symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    order_type TEXT NOT NULL,
+    order_no TEXT,
+    quantity INTEGER NOT NULL,
+    price REAL NOT NULL,
+    pnl REAL,
+    reason TEXT,
+    executed_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS futures_daily_reports (
+    id INTEGER PRIMARY KEY,
+    report_date TEXT NOT NULL UNIQUE,
+    starting_equity REAL,
+    ending_equity REAL,
+    daily_pnl REAL,
+    daily_pnl_rate REAL,
+    margin_used REAL,
+    margin_rate REAL,
+    total_trades INTEGER,
+    winning_trades INTEGER,
+    losing_trades INTEGER,
+    risk_stop_triggered INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS futures_specs (
+    base_symbol TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    exchange TEXT NOT NULL,
+    tick_size REAL NOT NULL,
+    tick_value REAL NOT NULL,
+    margin_required REAL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 DEFAULTS = {
@@ -72,6 +129,13 @@ DEFAULTS = {
     "capital_ratio": (str(config.CAPITAL_RATIO), "예수금 사용 비율(%)"),
     "trading_paused": ("0", "매매 일시 중단 여부"),
     "risk_stopped": ("0", "리스크 청산으로 당일 매매 중단 여부"),
+    # 선물 설정
+    "futures_donchian_period": (str(config.FUTURES_DONCHIAN_PERIOD), "선물 돈치안 채널 기간"),
+    "futures_atr_multiplier": (str(config.FUTURES_ATR_MULTIPLIER), "선물 트레일링 스탑 ATR 배수"),
+    "futures_max_contracts": (str(config.FUTURES_MAX_CONTRACTS), "선물 최대 동시 보유 종목 수"),
+    "futures_risk_per_trade": (str(config.FUTURES_RISK_PER_TRADE), "선물 1종목당 리스크 비율(%)"),
+    "futures_trading_paused": ("0", "선물 매매 일시 중단 여부"),
+    "futures_risk_stopped": ("0", "선물 리스크 청산으로 당일 매매 중단 여부"),
 }
 
 

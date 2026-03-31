@@ -16,15 +16,22 @@ KST = ZoneInfo("Asia/Seoul")
 
 # 스케줄러 참조 (main에서 주입)
 _scheduler = None
+_futures_scheduler = None
 
 # LS API 캐시 (TR별 분당 호출 제한 대응)
 _cache = {"balance": {}, "holdings": [], "_balance_at": 0, "_holdings_at": 0}
+_futures_cache = {"balance": {}, "holdings": [], "_balance_at": 0, "_holdings_at": 0}
 CACHE_TTL = 30  # 30초 캐시
 
 
 def set_scheduler(scheduler):
     global _scheduler
     _scheduler = scheduler
+
+
+def set_futures_scheduler(scheduler):
+    global _futures_scheduler
+    _futures_scheduler = scheduler
 
 
 async def _get_cached_balance():
@@ -137,6 +144,100 @@ async def get_logs(lines: int = 50):
             return {"logs": all_lines[-lines:]}
     except FileNotFoundError:
         return {"logs": []}
+
+
+# ══ 선물 API ═══════════════════════════════════════════
+
+
+async def _get_cached_futures_balance():
+    now = time.time()
+    if now - _futures_cache["_balance_at"] < CACHE_TTL and _futures_cache["balance"]:
+        return _futures_cache["balance"]
+    try:
+        _futures_cache["balance"] = await _futures_scheduler.client.get_balance()
+        _futures_cache["_balance_at"] = now
+    except Exception as e:
+        log.warning("[선물] 예수금 조회 실패: %s", e)
+    return _futures_cache["balance"]
+
+
+async def _get_cached_futures_holdings():
+    now = time.time()
+    if now - _futures_cache["_holdings_at"] < CACHE_TTL and _futures_cache["holdings"]:
+        return _futures_cache["holdings"]
+    try:
+        _futures_cache["holdings"] = await _futures_scheduler.client.get_holdings()
+        _futures_cache["_holdings_at"] = now
+    except Exception as e:
+        log.warning("[선물] 미결제잔고 조회 실패: %s", e)
+    return _futures_cache["holdings"]
+
+
+@router.get("/futures/status")
+async def get_futures_status():
+    """선물 봇 상태"""
+    settings = await repo.get_all_settings()
+    result = {
+        "trading_paused": settings.get("futures_trading_paused") == "1",
+        "risk_stopped": settings.get("futures_risk_stopped") == "1",
+        "bot_running": _futures_scheduler is not None,
+        "balance": {},
+        "holdings": [],
+    }
+    if _futures_scheduler and _futures_scheduler.client:
+        result["balance"] = await _get_cached_futures_balance()
+        result["holdings"] = await _get_cached_futures_holdings()
+    return result
+
+
+@router.get("/futures/settings")
+async def get_futures_settings():
+    """선물 설정값"""
+    settings = await repo.get_all_settings()
+    return {k: v for k, v in settings.items() if k.startswith("futures_")}
+
+
+@router.post("/futures/settings/{key}")
+async def update_futures_setting(key: str, value: str):
+    """선물 설정값 변경"""
+    allowed = {
+        "futures_donchian_period": lambda v: v.isdigit() and 5 <= int(v) <= 100,
+        "futures_atr_multiplier": lambda v: _is_float(v) and 1.0 <= float(v) <= 10.0,
+        "futures_max_contracts": lambda v: v.isdigit() and 1 <= int(v) <= 20,
+        "futures_risk_per_trade": lambda v: _is_float(v) and 0.5 <= float(v) <= 10.0,
+    }
+    if key not in allowed:
+        return {"error": f"변경 불가: {key}"}
+    if not allowed[key](value):
+        return {"error": f"잘못된 값: {value}"}
+    await repo.set_setting(key, value)
+    return {"ok": True, "key": key, "value": value}
+
+
+@router.post("/futures/control/{action}")
+async def futures_control(action: str):
+    """선물 매매 제어"""
+    if action == "stop":
+        await repo.set_setting("futures_trading_paused", "1")
+        return {"ok": True, "action": "선물 매매 중단"}
+    elif action == "start":
+        await repo.set_setting("futures_trading_paused", "0")
+        return {"ok": True, "action": "선물 매매 재개"}
+    return {"error": f"알 수 없는 액션: {action}"}
+
+
+@router.get("/futures/trades")
+async def get_futures_trades():
+    """오늘 선물 매매 내역"""
+    trades = await repo.get_today_futures_trades()
+    return {"trades": trades, "count": len(trades)}
+
+
+@router.get("/futures/positions")
+async def get_futures_positions():
+    """선물 포지션"""
+    positions = await repo.get_futures_positions()
+    return {"positions": positions, "count": len(positions)}
 
 
 def _is_float(v: str) -> bool:
