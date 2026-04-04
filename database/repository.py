@@ -19,8 +19,10 @@ async def get_setting(key: str) -> str | None:
 async def set_setting(key: str, value: str):
     async with await _connect() as db:
         await db.execute(
-            "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = ?",
-            (value, key),
+            """INSERT INTO settings (key, value, updated_at)
+               VALUES (?, ?, datetime('now'))
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            (key, value),
         )
         await db.commit()
 

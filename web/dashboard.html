@@ -7,8 +7,22 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e1e4e8; padding: 20px; }
-h1 { font-size: 1.4em; margin-bottom: 16px; color: #58a6ff; }
+h1 { font-size: 1.4em; color: #58a6ff; }
 h2 { font-size: 1.1em; margin-bottom: 10px; color: #8b949e; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+
+/* 탭 네비게이션 */
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.auto-refresh { display: flex; align-items: center; gap: 6px; color: #8b949e; font-size: 0.85em; }
+.auto-refresh input { accent-color: #1f6feb; }
+
+.tab-bar { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #21262d; padding-bottom: 0; }
+.tab-btn { padding: 10px 20px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: #8b949e; cursor: pointer; font-size: 0.95em; font-weight: 500; transition: all 0.15s; position: relative; bottom: -1px; }
+.tab-btn:hover { color: #e1e4e8; background: #161b22; }
+.tab-btn.active { background: #161b22; color: #58a6ff; border-color: #21262d; border-bottom: 1px solid #161b22; }
+.tab-btn .tab-icon { margin-right: 6px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; }
@@ -20,6 +34,7 @@ h2 { font-size: 1.1em; margin-bottom: 10px; color: #8b949e; border-bottom: 1px s
 .badge-on { background: #238636; color: #fff; }
 .badge-off { background: #6e7681; color: #fff; }
 .badge-warn { background: #d29922; color: #fff; }
+.badge-paper { background: #8957e5; color: #fff; }
 
 .stat { margin: 8px 0; }
 .stat-label { color: #8b949e; font-size: 0.85em; }
@@ -48,27 +63,34 @@ tr:hover { background: #1c2128; }
 .control-group .desc { display: block; color: #6e7681; font-size: 0.75em; margin-top: 2px; line-height: 1.3; }
 .control-group input { width: 70px; padding: 6px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e1e4e8; font-size: 0.9em; }
 
-.log-box { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 12px; max-height: 300px; overflow-y: auto; font-family: 'SF Mono', monospace; font-size: 0.8em; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.log-box { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 12px; max-height: 500px; overflow-y: auto; font-family: 'SF Mono', monospace; font-size: 0.8em; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
 .log-info { color: #8b949e; }
 .log-warn { color: #d29922; }
 .log-error { color: #f85149; }
 
-.refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.refresh-bar span { color: #6e7681; font-size: 0.8em; }
-.auto-refresh { display: flex; align-items: center; gap: 6px; color: #8b949e; font-size: 0.85em; }
-.auto-refresh input { accent-color: #1f6feb; }
+.empty-msg { color: #6e7681; padding: 20px; text-align: center; }
+
+.key-group { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.key-group label { color: #8b949e; font-size: 0.85em; min-width: 110px; }
+.key-group input { flex: 1; padding: 6px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e1e4e8; font-size: 0.85em; font-family: 'SF Mono', monospace; }
+.key-status { font-size: 0.8em; padding: 2px 8px; border-radius: 10px; }
+.key-set { background: #238636; color: #fff; }
+.key-unset { background: #6e7681; color: #fff; }
+.key-source { color: #6e7681; font-size: 0.75em; margin-left: 4px; }
 
 @media (max-width: 768px) {
   .grid { grid-template-columns: 1fr; }
   body { padding: 12px; }
+  .tab-btn { padding: 8px 12px; font-size: 0.85em; }
 }
 </style>
 </head>
 <body>
 
-<div class="refresh-bar">
+<!-- 헤더 -->
+<div class="header">
   <h1>Turtle Trading Bot</h1>
-  <div style="display:flex;align-items:center;gap:12px">
+  <div class="header-right">
     <div class="auto-refresh">
       <input type="checkbox" id="autoRefresh" checked>
       <label for="autoRefresh">자동 새로고침 (10초)</label>
@@ -77,189 +99,330 @@ tr:hover { background: #1c2128; }
   </div>
 </div>
 
-<div class="grid">
-  <!-- 봇 상태 -->
-  <div class="card">
-    <h2>봇 상태</h2>
-    <div class="stat">
-      <div class="stat-label">모드</div>
-      <div id="mode-badge"></div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">매매 상태</div>
-      <div id="trading-badge"></div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">한국시간</div>
-      <div class="stat-value" id="kst-time" style="font-size:1em">-</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">미국 동부시간</div>
-      <div id="et-time" style="color:#8b949e;font-size:0.85em">-</div>
-    </div>
-    <div class="controls" style="margin-top:12px">
-      <button class="btn btn-success" onclick="control('start')">매매 재개</button>
-      <button class="btn btn-danger" onclick="control('stop')">매매 중단</button>
-    </div>
-    <div class="controls">
-      <button class="btn" id="btn-dry" onclick="setMode('dry')">DRY 모드</button>
-      <button class="btn" id="btn-live" onclick="setMode('live')">LIVE 모드</button>
-    </div>
-  </div>
+<!-- 탭 네비게이션 -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('stocks')">
+    <span class="tab-icon">&#x1F4C8;</span>해외주식
+  </button>
+  <button class="tab-btn" onclick="switchTab('futures')">
+    <span class="tab-icon">&#x1F4CA;</span>해외선물
+  </button>
+  <button class="tab-btn" onclick="switchTab('logs')">
+    <span class="tab-icon">&#x1F4CB;</span>로그
+  </button>
+</div>
 
-  <!-- 예수금 -->
-  <div class="card">
-    <h2>계좌</h2>
-    <div class="stat">
-      <div class="stat-label">주문가능(합계)</div>
-      <div class="stat-value" id="orderable">-</div>
+<!-- ═══ 해외주식 탭 ═══ -->
+<div id="tab-stocks" class="tab-content active">
+  <div class="grid">
+    <!-- 봇 상태 -->
+    <div class="card">
+      <h2>봇 상태</h2>
+      <div class="stat">
+        <div class="stat-label">모드</div>
+        <div id="s-mode-badge"></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">매매 상태</div>
+        <div id="s-trading-badge"></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">한국시간</div>
+        <div class="stat-value" id="s-kst-time" style="font-size:1em">-</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">미국 동부시간</div>
+        <div id="s-et-time" style="color:#8b949e;font-size:0.85em">-</div>
+      </div>
+      <div class="controls" style="margin-top:12px">
+        <button class="btn btn-success" onclick="stockControl('start')">매매 재개</button>
+        <button class="btn btn-danger" onclick="stockControl('stop')">매매 중단</button>
+      </div>
+      <div class="controls">
+        <button class="btn" id="btn-dry" onclick="setMode('dry')">DRY 모드</button>
+        <button class="btn" id="btn-live" onclick="setMode('live')">LIVE 모드</button>
+      </div>
     </div>
-    <div class="stat">
-      <div class="stat-label">외화 / 사전환전</div>
-      <div id="orderable-detail" style="color:#8b949e;font-size:0.9em">-</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">원화 잔고</div>
-      <div id="won-balance" style="font-size:1.1em">-</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">환율</div>
-      <div id="exchange-rate" style="color:#8b949e;font-size:0.9em">-</div>
-    </div>
-  </div>
 
-  <!-- 보유종목 -->
-  <div class="card card-full">
-    <h2>보유종목 <span id="holdings-count" style="color:#6e7681;font-size:0.85em"></span></h2>
-    <table>
-      <thead><tr><th>종목</th><th>수량</th><th>매수가</th><th>현재가</th><th>평가금</th><th>손익</th><th>수익률</th></tr></thead>
-      <tbody id="holdings-body"><tr><td colspan="7" style="color:#6e7681">로딩중...</td></tr></tbody>
-    </table>
-  </div>
-
-  <!-- 설정 -->
-  <div class="card">
-    <h2>전략 파라미터</h2>
-    <div class="controls" style="flex-direction:column;align-items:stretch">
-      <div class="control-group">
-        <label>돈치안 채널<br><span class="desc">Donchian Channel<br>N일 최고가 돌파 시 매수 신호</span></label>
-        <input type="number" id="set-donchian_period" min="5" max="100">
-        <button class="btn" onclick="saveSetting('donchian_period')">저장</button>
+    <!-- 계좌 -->
+    <div class="card">
+      <h2>계좌</h2>
+      <div class="stat">
+        <div class="stat-label">주문가능(합계)</div>
+        <div class="stat-value" id="s-orderable">-</div>
       </div>
-      <div class="control-group">
-        <label>ATR 배수<br><span class="desc">ATR Multiplier<br>손절 거리 배수. 클수록 느슨한 손절</span></label>
-        <input type="number" id="set-atr_multiplier" step="0.1" min="1" max="10">
-        <button class="btn" onclick="saveSetting('atr_multiplier')">저장</button>
+      <div class="stat">
+        <div class="stat-label">외화 / 사전환전</div>
+        <div id="s-orderable-detail" style="color:#8b949e;font-size:0.9em">-</div>
       </div>
-      <div class="control-group">
-        <label>최대 종목 수<br><span class="desc">Max Stocks<br>동시에 보유 가능한 종목 수</span></label>
-        <input type="number" id="set-max_stocks" min="1" max="20">
-        <button class="btn" onclick="saveSetting('max_stocks')">저장</button>
+      <div class="stat">
+        <div class="stat-label">원화 잔고</div>
+        <div id="s-won-balance" style="font-size:1.1em">-</div>
       </div>
-      <div class="control-group">
-        <label>예수금 비율(%)<br><span class="desc">Capital Ratio<br>전체 예수금 중 매매에 사용할 비율</span></label>
-        <input type="number" id="set-capital_ratio" min="10" max="100">
-        <button class="btn" onclick="saveSetting('capital_ratio')">저장</button>
+      <div class="stat">
+        <div class="stat-label">환율</div>
+        <div id="s-exchange-rate" style="color:#8b949e;font-size:0.9em">-</div>
       </div>
     </div>
-  </div>
 
-  <!-- 매매 내역 -->
-  <div class="card">
-    <h2>오늘 매매 <span id="trades-count" style="color:#6e7681;font-size:0.85em"></span></h2>
-    <table>
-      <thead><tr><th>종목</th><th>구분</th><th>수량</th><th>가격</th><th>사유</th></tr></thead>
-      <tbody id="trades-body"><tr><td colspan="5" style="color:#6e7681">-</td></tr></tbody>
-    </table>
-  </div>
-
-  <!-- 선물 섹션 -->
-  <div class="card card-full" style="border-color:#d29922">
-    <h2 style="color:#d29922">해외선물 모의투자 (홍콩거래소 HKEX 전용)</h2>
-    <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
-      <div>
-        <div class="stat">
-          <div class="stat-label">매매 상태</div>
-          <div id="futures-trading-badge">-</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">주문가능</div>
-          <div class="stat-value" id="futures-orderable" style="font-size:1.1em">-</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">증거금 / 평가손익</div>
-          <div id="futures-margin-info" style="color:#8b949e;font-size:0.9em">-</div>
-        </div>
-        <div class="controls" style="margin-top:8px">
-          <button class="btn btn-success" onclick="futuresControl('start')">선물 재개</button>
-          <button class="btn btn-danger" onclick="futuresControl('stop')">선물 중단</button>
-        </div>
-      </div>
-      <div>
-        <div class="stat-label">포지션</div>
-        <table>
-          <thead><tr><th>종목</th><th>방향</th><th>계약</th><th>진입가</th><th>스탑</th></tr></thead>
-          <tbody id="futures-positions-body"><tr><td colspan="5" style="color:#6e7681">-</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div style="margin-top:8px">
-      <div class="stat-label">오늘 매매 <span id="futures-trades-count" style="color:#6e7681;font-size:0.85em"></span></div>
+    <!-- 보유종목 -->
+    <div class="card card-full">
+      <h2>보유종목 <span id="s-holdings-count" style="color:#6e7681;font-size:0.85em"></span></h2>
       <table>
-        <thead><tr><th>종목</th><th>구분</th><th>방향</th><th>계약</th><th>가격</th><th>손익</th><th>사유</th></tr></thead>
-        <tbody id="futures-trades-body"><tr><td colspan="7" style="color:#6e7681">-</td></tr></tbody>
+        <thead><tr><th>종목</th><th>수량</th><th>매수가</th><th>현재가</th><th>평가금</th><th>손익</th><th>수익률</th></tr></thead>
+        <tbody id="s-holdings-body"><tr><td colspan="7" class="empty-msg">로딩중...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- 전략 파라미터 -->
+    <div class="card">
+      <h2>전략 파라미터</h2>
+      <div class="controls" style="flex-direction:column;align-items:stretch">
+        <div class="control-group">
+          <label>돈치안 채널<br><span class="desc">N일 최고가 돌파 시 매수 신호</span></label>
+          <input type="number" id="set-donchian_period" min="5" max="100">
+          <button class="btn" onclick="saveSetting('donchian_period')">저장</button>
+        </div>
+        <div class="control-group">
+          <label>ATR 배수<br><span class="desc">손절 거리 배수. 클수록 느슨한 손절</span></label>
+          <input type="number" id="set-atr_multiplier" step="0.1" min="1" max="10">
+          <button class="btn" onclick="saveSetting('atr_multiplier')">저장</button>
+        </div>
+        <div class="control-group">
+          <label>최대 종목 수<br><span class="desc">동시에 보유 가능한 종목 수</span></label>
+          <input type="number" id="set-max_stocks" min="1" max="20">
+          <button class="btn" onclick="saveSetting('max_stocks')">저장</button>
+        </div>
+        <div class="control-group">
+          <label>예수금 비율(%)<br><span class="desc">전체 예수금 중 매매에 사용할 비율</span></label>
+          <input type="number" id="set-capital_ratio" min="10" max="100">
+          <button class="btn" onclick="saveSetting('capital_ratio')">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- API 키 -->
+    <div class="card">
+      <h2>API 키 (LS증권)
+        <span id="s-key-status" class="key-status key-unset">미설정</span>
+        <span id="s-key-source" class="key-source"></span>
+      </h2>
+      <div class="key-group">
+        <label>AppKey</label>
+        <input type="password" id="s-appkey" placeholder="AppKey 입력">
+      </div>
+      <div class="key-group">
+        <label>AppSecretKey</label>
+        <input type="password" id="s-appsecretkey" placeholder="AppSecretKey 입력">
+      </div>
+      <div class="controls">
+        <button class="btn btn-primary" onclick="saveKeys('stock')">저장</button>
+        <button class="btn" onclick="toggleKeyVisibility('s')">보기/숨기기</button>
+      </div>
+    </div>
+
+    <!-- 오늘 매매 -->
+    <div class="card">
+      <h2>오늘 매매 <span id="s-trades-count" style="color:#6e7681;font-size:0.85em"></span></h2>
+      <table>
+        <thead><tr><th>종목</th><th>구분</th><th>수량</th><th>가격</th><th>사유</th></tr></thead>
+        <tbody id="s-trades-body"><tr><td colspan="5" class="empty-msg">-</td></tr></tbody>
       </table>
     </div>
   </div>
+</div>
 
-  <!-- 로그 -->
-  <div class="card card-full">
-    <h2>로그</h2>
-    <div class="log-box" id="log-box">로딩중...</div>
+<!-- ═══ 해외선물 탭 ═══ -->
+<div id="tab-futures" class="tab-content">
+  <div class="grid">
+    <!-- 선물 봇 상태 -->
+    <div class="card">
+      <h2>봇 상태 <span class="badge badge-paper">모의투자</span></h2>
+      <div class="stat">
+        <div class="stat-label">매매 상태</div>
+        <div id="f-trading-badge">-</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">한국시간</div>
+        <div class="stat-value" id="f-kst-time" style="font-size:1em">-</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">홍콩시간</div>
+        <div id="f-hkt-time" style="color:#8b949e;font-size:0.85em">-</div>
+      </div>
+      <div class="controls" style="margin-top:12px">
+        <button class="btn btn-success" onclick="futuresControl('start')">매매 재개</button>
+        <button class="btn btn-danger" onclick="futuresControl('stop')">매매 중단</button>
+      </div>
+    </div>
+
+    <!-- 선물 계좌 -->
+    <div class="card">
+      <h2>계좌 (HKEX)</h2>
+      <div class="stat">
+        <div class="stat-label">주문가능</div>
+        <div class="stat-value" id="f-orderable" style="font-size:1.1em">-</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">증거금</div>
+        <div id="f-margin" style="font-size:1.1em">-</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">평가손익</div>
+        <div id="f-eval-pnl" style="font-size:1.1em">-</div>
+      </div>
+    </div>
+
+    <!-- 포지션 -->
+    <div class="card card-full">
+      <h2>포지션 <span id="f-positions-count" style="color:#6e7681;font-size:0.85em"></span></h2>
+      <table>
+        <thead><tr><th>종목</th><th>방향</th><th>계약</th><th>진입가</th><th>스탑</th></tr></thead>
+        <tbody id="f-positions-body"><tr><td colspan="5" class="empty-msg">로딩중...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- 선물 전략 파라미터 -->
+    <div class="card">
+      <h2>전략 파라미터</h2>
+      <div class="controls" style="flex-direction:column;align-items:stretch">
+        <div class="control-group">
+          <label>돈치안 채널<br><span class="desc">N일 최고가 돌파 시 진입 신호</span></label>
+          <input type="number" id="set-futures_donchian_period" min="5" max="100">
+          <button class="btn" onclick="saveFuturesSetting('futures_donchian_period')">저장</button>
+        </div>
+        <div class="control-group">
+          <label>ATR 배수<br><span class="desc">손절 거리 배수. 클수록 느슨한 손절</span></label>
+          <input type="number" id="set-futures_atr_multiplier" step="0.1" min="1" max="10">
+          <button class="btn" onclick="saveFuturesSetting('futures_atr_multiplier')">저장</button>
+        </div>
+        <div class="control-group">
+          <label>최대 계약 수<br><span class="desc">동시에 보유 가능한 총 계약 수</span></label>
+          <input type="number" id="set-futures_max_contracts" min="1" max="20">
+          <button class="btn" onclick="saveFuturesSetting('futures_max_contracts')">저장</button>
+        </div>
+        <div class="control-group">
+          <label>리스크 비율(%)<br><span class="desc">1종목당 위험 허용 비율</span></label>
+          <input type="number" id="set-futures_risk_per_trade" step="0.5" min="0.5" max="10">
+          <button class="btn" onclick="saveFuturesSetting('futures_risk_per_trade')">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 선물 API 키: 모의투자 -->
+    <div class="card">
+      <h2>API 키 (모의투자)
+        <span id="fp-key-status" class="key-status key-unset">미설정</span>
+        <span id="fp-key-source" class="key-source"></span>
+      </h2>
+      <div class="key-group">
+        <label>AppKey</label>
+        <input type="password" id="fp-appkey" placeholder="모의투자 AppKey">
+      </div>
+      <div class="key-group">
+        <label>AppSecretKey</label>
+        <input type="password" id="fp-appsecretkey" placeholder="모의투자 AppSecretKey">
+      </div>
+      <div class="controls">
+        <button class="btn btn-primary" onclick="saveKeys('futures_paper')">저장</button>
+        <button class="btn" onclick="toggleKeyVisibility('fp')">보기/숨기기</button>
+      </div>
+    </div>
+
+    <!-- 선물 API 키: 실전투자 -->
+    <div class="card">
+      <h2>API 키 (실전투자)
+        <span id="fl-key-status" class="key-status key-unset">미설정</span>
+        <span id="fl-key-source" class="key-source"></span>
+      </h2>
+      <div class="key-group">
+        <label>AppKey</label>
+        <input type="password" id="fl-appkey" placeholder="실전투자 AppKey">
+      </div>
+      <div class="key-group">
+        <label>AppSecretKey</label>
+        <input type="password" id="fl-appsecretkey" placeholder="실전투자 AppSecretKey">
+      </div>
+      <div class="controls">
+        <button class="btn btn-primary" onclick="saveKeys('futures_live')">저장</button>
+        <button class="btn" onclick="toggleKeyVisibility('fl')">보기/숨기기</button>
+      </div>
+    </div>
+
+    <!-- 선물 오늘 매매 -->
+    <div class="card">
+      <h2>오늘 매매 <span id="f-trades-count" style="color:#6e7681;font-size:0.85em"></span></h2>
+      <table>
+        <thead><tr><th>종목</th><th>구분</th><th>방향</th><th>계약</th><th>가격</th><th>손익</th><th>사유</th></tr></thead>
+        <tbody id="f-trades-body"><tr><td colspan="7" class="empty-msg">-</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 로그 탭 ═══ -->
+<div id="tab-logs" class="tab-content">
+  <div class="grid">
+    <div class="card card-full">
+      <h2>시스템 로그</h2>
+      <div class="log-box" id="log-box">로딩중...</div>
+    </div>
   </div>
 </div>
 
 <script>
 const API = '';
 let refreshTimer = null;
+let currentTab = 'stocks';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['stocks','futures','logs'][i] === tab);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  refreshCurrentTab();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(API + path, opts);
   return res.json();
 }
 
-async function loadStatus() {
+// ═══ 해외주식 ═══
+async function loadStockStatus() {
   try {
     const d = await api('/api/status');
-    // 모드
-    const modeEl = document.getElementById('mode-badge');
+    const modeEl = document.getElementById('s-mode-badge');
     modeEl.innerHTML = d.mode === 'live'
       ? '<span class="badge badge-live">LIVE</span>'
       : '<span class="badge badge-dry">DRY RUN</span>';
     document.getElementById('btn-dry').className = 'btn' + (d.mode === 'dry' ? ' btn-active' : '');
     document.getElementById('btn-live').className = 'btn' + (d.mode === 'live' ? ' btn-active' : '');
 
-    // 매매 상태
-    const tradingEl = document.getElementById('trading-badge');
+    const tradingEl = document.getElementById('s-trading-badge');
     if (d.risk_stopped) tradingEl.innerHTML = '<span class="badge badge-warn">리스크 중단</span>';
     else if (d.trading_paused) tradingEl.innerHTML = '<span class="badge badge-off">중단</span>';
     else tradingEl.innerHTML = '<span class="badge badge-on">활성</span>';
 
-    document.getElementById('kst-time').textContent = d.time_kst;
-    document.getElementById('et-time').textContent = d.time_et;
+    document.getElementById('s-kst-time').textContent = d.time_kst;
+    document.getElementById('s-et-time').textContent = d.time_et;
 
-    // 예수금
     const b = d.balance || {};
-    document.getElementById('orderable').textContent = '$' + (b.orderable || 0).toLocaleString('en', {minimumFractionDigits: 2});
-    document.getElementById('orderable-detail').textContent = `외화 $${(b.orderable_fcurr||0).toFixed(2)} / 사전환전 $${(b.orderable_prexch||0).toFixed(2)}`;
-    document.getElementById('won-balance').textContent = (b.won_balance || 0).toLocaleString('ko') + '원';
-    document.getElementById('exchange-rate').textContent = b.exchange_rate ? `$1 = ${b.exchange_rate.toLocaleString('ko')}원` : '-';
+    document.getElementById('s-orderable').textContent = '$' + (b.orderable || 0).toLocaleString('en', {minimumFractionDigits: 2});
+    document.getElementById('s-orderable-detail').textContent = `외화 $${(b.orderable_fcurr||0).toFixed(2)} / 사전환전 $${(b.orderable_prexch||0).toFixed(2)}`;
+    document.getElementById('s-won-balance').textContent = (b.won_balance || 0).toLocaleString('ko') + '원';
+    document.getElementById('s-exchange-rate').textContent = b.exchange_rate ? `$1 = ${b.exchange_rate.toLocaleString('ko')}원` : '-';
 
-    // 보유종목
-    const tbody = document.getElementById('holdings-body');
-    document.getElementById('holdings-count').textContent = `(${d.holdings.length}개)`;
+    const tbody = document.getElementById('s-holdings-body');
+    document.getElementById('s-holdings-count').textContent = `(${d.holdings.length}개)`;
     if (d.holdings.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="color:#6e7681">보유종목 없음</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">보유종목 없음</td></tr>';
     } else {
       tbody.innerHTML = d.holdings.map(h => {
         const pnlClass = h.pnl_rate >= 0 ? 'green' : 'red';
@@ -275,26 +438,26 @@ async function loadStatus() {
         </tr>`;
       }).join('');
     }
-  } catch(e) { console.error('status error:', e); }
+  } catch(e) { console.error('stock status error:', e); }
 }
 
-async function loadSettings() {
+async function loadStockSettings() {
   try {
     const s = await api('/api/settings');
     ['donchian_period','atr_multiplier','max_stocks','capital_ratio'].forEach(k => {
       const el = document.getElementById('set-' + k);
       if (el && s[k] !== undefined) el.value = s[k];
     });
-  } catch(e) { console.error('settings error:', e); }
+  } catch(e) { console.error('stock settings error:', e); }
 }
 
-async function loadTrades() {
+async function loadStockTrades() {
   try {
     const d = await api('/api/trades');
-    document.getElementById('trades-count').textContent = `(${d.count}건)`;
-    const tbody = document.getElementById('trades-body');
+    document.getElementById('s-trades-count').textContent = `(${d.count}건)`;
+    const tbody = document.getElementById('s-trades-body');
     if (d.count === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:#6e7681">오늘 매매 없음</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">오늘 매매 없음</td></tr>';
     } else {
       tbody.innerHTML = d.trades.slice(0, 20).map(t => {
         const cls = t.order_type === 'BUY' ? 'color:#3fb950' : 'color:#f85149';
@@ -307,48 +470,57 @@ async function loadTrades() {
         </tr>`;
       }).join('');
     }
-  } catch(e) { console.error('trades error:', e); }
+  } catch(e) { console.error('stock trades error:', e); }
 }
 
-async function loadLogs() {
-  try {
-    const d = await api('/api/logs?lines=80');
-    const box = document.getElementById('log-box');
-    box.innerHTML = d.logs.map(l => {
-      let cls = 'log-info';
-      if (l.includes('[WARNING]') || l.includes('[WARN]')) cls = 'log-warn';
-      if (l.includes('[ERROR]') || l.includes('[CRITICAL]')) cls = 'log-error';
-      return `<span class="${cls}">${escHtml(l)}</span>`;
-    }).join('');
-    box.scrollTop = box.scrollHeight;
-  } catch(e) { console.error('logs error:', e); }
+async function setMode(mode) {
+  await api(`/api/settings/mode?value=${mode}`, {method:'POST'});
+  refreshCurrentTab();
 }
 
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+async function stockControl(action) {
+  await api(`/api/control/${action}`, {method:'POST'});
+  refreshCurrentTab();
 }
 
+async function saveSetting(key) {
+  const val = document.getElementById('set-' + key).value;
+  const r = await api(`/api/settings/${key}?value=${val}`, {method:'POST'});
+  if (r.error) alert(r.error);
+  else refreshCurrentTab();
+}
+
+// ═══ 해외선물 ═══
 async function loadFuturesStatus() {
   try {
     const d = await api('/api/futures/status');
-    const el = document.getElementById('futures-trading-badge');
+    const el = document.getElementById('f-trading-badge');
     if (d.risk_stopped) el.innerHTML = '<span class="badge badge-warn">리스크 중단</span>';
     else if (d.trading_paused) el.innerHTML = '<span class="badge badge-off">중단</span>';
     else el.innerHTML = '<span class="badge badge-on">활성</span>';
 
+    // 시간
+    const now = new Date();
+    document.getElementById('f-kst-time').textContent = now.toLocaleString('ko-KR', {timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', year:'numeric', month:'2-digit', day:'2-digit'}) + ' (한국시간)';
+    document.getElementById('f-hkt-time').textContent = now.toLocaleString('ko-KR', {timeZone:'Asia/Hong_Kong', hour:'2-digit', minute:'2-digit', year:'numeric', month:'2-digit', day:'2-digit'}) + ' (홍콩시간)';
+
     const b = d.balance || {};
-    document.getElementById('futures-orderable').textContent = '$' + (b.orderable || 0).toLocaleString('en', {minimumFractionDigits: 2});
-    document.getElementById('futures-margin-info').textContent =
-      `증거금 $${(b.margin_used||0).toLocaleString('en',{minimumFractionDigits:2})} / 평가손익 $${(b.eval_pnl||0).toFixed(2)}`;
+    document.getElementById('f-orderable').textContent = '$' + (b.orderable || 0).toLocaleString('en', {minimumFractionDigits: 2});
+    document.getElementById('f-margin').textContent = '$' + (b.margin_used || 0).toLocaleString('en', {minimumFractionDigits: 2});
+    const evalPnl = b.eval_pnl || 0;
+    const pnlEl = document.getElementById('f-eval-pnl');
+    pnlEl.textContent = (evalPnl >= 0 ? '+' : '') + '$' + evalPnl.toFixed(2);
+    pnlEl.style.color = evalPnl >= 0 ? '#3fb950' : '#f85149';
 
     // 포지션
-    const pbody = document.getElementById('futures-positions-body');
+    const pbody = document.getElementById('f-positions-body');
     const positions = d.holdings || [];
+    document.getElementById('f-positions-count').textContent = `(${positions.length}개)`;
     if (positions.length === 0) {
-      pbody.innerHTML = '<tr><td colspan="5" style="color:#6e7681">포지션 없음</td></tr>';
+      pbody.innerHTML = '<tr><td colspan="5" class="empty-msg">포지션 없음</td></tr>';
     } else {
       pbody.innerHTML = positions.map(p => `<tr>
-        <td>${p.symbol}</td>
+        <td><b>${p.symbol}</b></td>
         <td>${p.direction}</td>
         <td>${p.quantity}</td>
         <td>${p.entry_price}</td>
@@ -358,15 +530,25 @@ async function loadFuturesStatus() {
   } catch(e) { console.error('futures status error:', e); }
 }
 
+async function loadFuturesSettings() {
+  try {
+    const s = await api('/api/futures/settings');
+    ['futures_donchian_period','futures_atr_multiplier','futures_max_contracts','futures_risk_per_trade'].forEach(k => {
+      const el = document.getElementById('set-' + k);
+      if (el && s[k] !== undefined) el.value = s[k];
+    });
+  } catch(e) { console.error('futures settings error:', e); }
+}
+
 async function loadFuturesTrades() {
   try {
     const d = await api('/api/futures/trades');
-    document.getElementById('futures-trades-count').textContent = `(${d.count}건)`;
-    const tbody = document.getElementById('futures-trades-body');
+    document.getElementById('f-trades-count').textContent = `(${d.count}건)`;
+    const tbody = document.getElementById('f-trades-body');
     if (d.count === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="color:#6e7681">오늘 매매 없음</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">오늘 매매 없음</td></tr>';
     } else {
-      tbody.innerHTML = d.trades.slice(0, 10).map(t => {
+      tbody.innerHTML = d.trades.slice(0, 20).map(t => {
         const cls = t.order_type === 'ENTRY' ? 'color:#3fb950' : 'color:#f85149';
         const pnl = t.pnl != null ? `$${t.pnl.toFixed(2)}` : '-';
         return `<tr>
@@ -385,31 +567,104 @@ async function loadFuturesTrades() {
 
 async function futuresControl(action) {
   await api(`/api/futures/control/${action}`, {method:'POST'});
-  refreshAll();
+  refreshCurrentTab();
+}
+
+async function saveFuturesSetting(key) {
+  const val = document.getElementById('set-' + key).value;
+  const r = await api(`/api/futures/settings/${key}?value=${val}`, {method:'POST'});
+  if (r.error) alert(r.error);
+  else refreshCurrentTab();
+}
+
+// ═══ 로그 ═══
+async function loadLogs() {
+  try {
+    const d = await api('/api/logs?lines=100');
+    const box = document.getElementById('log-box');
+    box.innerHTML = d.logs.map(l => {
+      let cls = 'log-info';
+      if (l.includes('[WARNING]') || l.includes('[WARN]')) cls = 'log-warn';
+      if (l.includes('[ERROR]') || l.includes('[CRITICAL]')) cls = 'log-error';
+      return `<span class="${cls}">${escHtml(l)}</span>`;
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch(e) { console.error('logs error:', e); }
+}
+
+// ═══ API 키 관리 ═══
+const KEY_PREFIX_MAP = { stock: 's', futures_paper: 'fp', futures_live: 'fl' };
+const SOURCE_LABEL = { db: '(DB 저장)', env: '(.env)', none: '' };
+
+async function loadKeys() {
+  try {
+    const d = await api('/api/keys');
+    for (const [cat, prefix] of Object.entries(KEY_PREFIX_MAP)) {
+      const info = d[cat];
+      if (!info) continue;
+      const statusEl = document.getElementById(prefix + '-key-status');
+      const sourceEl = document.getElementById(prefix + '-key-source');
+      if (statusEl) {
+        if (info.has_key && info.has_secret) {
+          statusEl.textContent = '설정됨';
+          statusEl.className = 'key-status key-set';
+        } else if (info.has_key || info.has_secret) {
+          statusEl.textContent = '일부 설정';
+          statusEl.className = 'key-status key-unset';
+        } else {
+          statusEl.textContent = '미설정';
+          statusEl.className = 'key-status key-unset';
+        }
+      }
+      if (sourceEl) sourceEl.textContent = SOURCE_LABEL[info.source] || '';
+      // placeholder에 마스킹된 값 표시
+      const akEl = document.getElementById(prefix + '-appkey');
+      const skEl = document.getElementById(prefix + '-appsecretkey');
+      if (akEl && info.appkey) akEl.placeholder = info.appkey;
+      if (skEl && info.appsecretkey) skEl.placeholder = info.appsecretkey;
+    }
+  } catch(e) { console.error('keys error:', e); }
+}
+
+async function saveKeys(category) {
+  const prefix = KEY_PREFIX_MAP[category];
+  const appkey = document.getElementById(prefix + '-appkey').value.trim();
+  const appsecretkey = document.getElementById(prefix + '-appsecretkey').value.trim();
+  if (!appkey && !appsecretkey) { alert('AppKey 또는 AppSecretKey를 입력해주세요'); return; }
+  const params = new URLSearchParams();
+  if (appkey) params.set('appkey', appkey);
+  if (appsecretkey) params.set('appsecretkey', appsecretkey);
+  const r = await api(`/api/keys/${category}?${params}`, {method:'POST'});
+  if (r.error) { alert(r.error); return; }
+  // 입력 필드 초기화 후 상태 갱신
+  document.getElementById(prefix + '-appkey').value = '';
+  document.getElementById(prefix + '-appsecretkey').value = '';
+  alert('API 키가 저장되었습니다. 재로그인이 필요할 수 있습니다.');
+  await loadKeys();
+}
+
+function toggleKeyVisibility(prefix) {
+  ['appkey', 'appsecretkey'].forEach(suffix => {
+    const el = document.getElementById(prefix + '-' + suffix);
+    if (el) el.type = el.type === 'password' ? 'text' : 'password';
+  });
+}
+
+// ═══ 탭별 새로고침 ═══
+async function refreshCurrentTab() {
+  if (currentTab === 'stocks') {
+    await Promise.all([loadStockStatus(), loadStockSettings(), loadStockTrades(), loadKeys()]);
+  } else if (currentTab === 'futures') {
+    await Promise.all([loadFuturesStatus(), loadFuturesSettings(), loadFuturesTrades(), loadKeys()]);
+  } else if (currentTab === 'logs') {
+    await loadLogs();
+  }
 }
 
 async function refreshAll() {
-  await Promise.all([loadStatus(), loadSettings(), loadTrades(), loadFuturesStatus(), loadFuturesTrades(), loadLogs()]);
+  await refreshCurrentTab();
 }
 
-async function setMode(mode) {
-  await api(`/api/settings/mode?value=${mode}`, {method:'POST'});
-  refreshAll();
-}
-
-async function control(action) {
-  await api(`/api/control/${action}`, {method:'POST'});
-  refreshAll();
-}
-
-async function saveSetting(key) {
-  const val = document.getElementById('set-' + key).value;
-  const r = await api(`/api/settings/${key}?value=${val}`, {method:'POST'});
-  if (r.error) alert(r.error);
-  else refreshAll();
-}
-
-// 자동 새로고침
 function setupAutoRefresh() {
   const cb = document.getElementById('autoRefresh');
   cb.addEventListener('change', () => {

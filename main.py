@@ -40,14 +40,30 @@ async def lifespan(app: FastAPI):
     await init_db()
     log.info("데이터베이스 초기화 완료")
 
+    # DB에 저장된 API 키가 있으면 config에 반영
+    from database import repository as repo
+    settings = await repo.get_all_settings()
+    _key_map = {
+        "stock_appkey": "LS_APPKEY",
+        "stock_appsecretkey": "LS_APPSECRETKEY",
+        "futures_paper_appkey": "FUTURES_LS_APPKEY",
+        "futures_paper_appsecretkey": "FUTURES_LS_APPSECRETKEY",
+        "futures_live_appkey": "FUTURES_LIVE_APPKEY",
+        "futures_live_appsecretkey": "FUTURES_LIVE_APPSECRETKEY",
+    }
+    for db_key, cfg_attr in _key_map.items():
+        if settings.get(db_key):
+            setattr(config, cfg_attr, settings[db_key])
+            log.info("DB에서 API 키 로드: %s", db_key)
+
     # 해외주식 봇 시작
     await bot.start()
     set_scheduler(bot)
 
-    # 해외선물 봇 시작 (텔레그램 공유)
+    # 해외선물 봇 시작 (텔레그램 공유, 30초 타임아웃)
     try:
         futures_bot = FuturesScheduler(notify_fn=bot.telegram.send)
-        await futures_bot.start()
+        await asyncio.wait_for(futures_bot.start(), timeout=30)
         set_futures_scheduler(futures_bot)
         log.info("해외선물 모의투자 봇 시작 완료")
     except Exception as e:

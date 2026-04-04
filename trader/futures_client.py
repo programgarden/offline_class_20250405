@@ -241,7 +241,7 @@ class FuturesClient:
     async def _get_balance_raw(self) -> dict:
         accno = self.futures.accno()
         today = datetime.utcnow().strftime("%Y%m%d")
-        resp = await accno.cidbq03000(
+        resp = await accno.CIDBQ03000(
             body=CIDBQ03000InBlock1(RecCnt=1, AcntTpCode="1", TrdDt=today),
             options=_rate_opts,
         ).req_async()
@@ -274,7 +274,7 @@ class FuturesClient:
     async def _get_holdings_raw(self) -> list[dict]:
         accno = self.futures.accno()
         today = datetime.utcnow().strftime("%Y%m%d")
-        resp = await accno.cidbq01500(
+        resp = await accno.CIDBQ01500(
             body=CIDBQ01500InBlock1(
                 RecCnt=1, AcntTpCode="1", QryDt=today,
                 BalTpCode="1", FcmAcntNo="",
@@ -318,7 +318,7 @@ class FuturesClient:
                                is_buy: bool, market_order: bool = False) -> dict:
         order = self.futures.order()
         today = datetime.utcnow().strftime("%Y%m%d")
-        resp = await order.cidbt00100(
+        resp = await order.CIDBT00100(
             body=CIDBT00100InBlock1(
                 RecCnt=1,
                 OrdDt=today,

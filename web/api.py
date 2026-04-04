@@ -246,3 +246,81 @@ def _is_float(v: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+# ══ API 키 관리 ═══════════════════════════════════════════
+
+_KEY_CATEGORIES = {
+    "stock": {
+        "appkey": "stock_appkey",
+        "appsecretkey": "stock_appsecretkey",
+        "config_appkey": "LS_APPKEY",
+        "config_appsecretkey": "LS_APPSECRETKEY",
+    },
+    "futures_paper": {
+        "appkey": "futures_paper_appkey",
+        "appsecretkey": "futures_paper_appsecretkey",
+        "config_appkey": "FUTURES_LS_APPKEY",
+        "config_appsecretkey": "FUTURES_LS_APPSECRETKEY",
+    },
+    "futures_live": {
+        "appkey": "futures_live_appkey",
+        "appsecretkey": "futures_live_appsecretkey",
+        "config_appkey": "FUTURES_LIVE_APPKEY",
+        "config_appsecretkey": "FUTURES_LIVE_APPSECRETKEY",
+    },
+}
+
+
+def _mask(value: str) -> str:
+    """키 값 마스킹 (앞4자리...뒤4자리)"""
+    if not value or len(value) < 8:
+        return ""
+    return value[:4] + "..." + value[-4:]
+
+
+@router.get("/keys")
+async def get_keys():
+    """API 키 상태 조회 (마스킹된 값)"""
+    settings = await repo.get_all_settings()
+    result = {}
+    for category, keys in _KEY_CATEGORIES.items():
+        db_appkey = settings.get(keys["appkey"], "")
+        db_secret = settings.get(keys["appsecretkey"], "")
+        # DB 값이 없으면 config(환경변수) 폴백
+        appkey = db_appkey or getattr(config, keys["config_appkey"], "")
+        secret = db_secret or getattr(config, keys["config_appsecretkey"], "")
+        result[category] = {
+            "appkey": _mask(appkey),
+            "appsecretkey": _mask(secret),
+            "has_key": bool(appkey),
+            "has_secret": bool(secret),
+            "source": "db" if db_appkey else ("env" if appkey else "none"),
+        }
+    return result
+
+
+@router.post("/keys/{category}")
+async def save_keys(category: str, appkey: str = "", appsecretkey: str = ""):
+    """API 키 저장"""
+    if category not in _KEY_CATEGORIES:
+        return {"error": f"알 수 없는 카테고리: {category}"}
+
+    keys = _KEY_CATEGORIES[category]
+    saved = []
+
+    if appkey:
+        await repo.set_setting(keys["appkey"], appkey)
+        setattr(config, keys["config_appkey"], appkey)
+        saved.append("appkey")
+
+    if appsecretkey:
+        await repo.set_setting(keys["appsecretkey"], appsecretkey)
+        setattr(config, keys["config_appsecretkey"], appsecretkey)
+        saved.append("appsecretkey")
+
+    if not saved:
+        return {"error": "appkey 또는 appsecretkey를 입력해주세요"}
+
+    log.info("[API키] %s 키 저장: %s", category, saved)
+    return {"ok": True, "category": category, "saved": saved}

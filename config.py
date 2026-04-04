@@ -54,9 +54,13 @@ DEFAULT_MODE = MODE_DRY
 
 # ── 해외선물 설정 ────────────────────────────────────────
 
-# 해외선물 모의투자 API (별도 키 또는 동일 키 사용)
-FUTURES_LS_APPKEY = os.getenv("FUTURES_LS_APPKEY", LS_APPKEY)
-FUTURES_LS_APPSECRETKEY = os.getenv("FUTURES_LS_APPSECRETKEY", LS_APPSECRETKEY)
+# 해외선물 모의투자 API
+FUTURES_LS_APPKEY = os.getenv("FUTURES_LS_APPKEY", os.getenv("APPKEY_FUTURE_FAKE", LS_APPKEY))
+FUTURES_LS_APPSECRETKEY = os.getenv("FUTURES_LS_APPSECRETKEY", os.getenv("APPSECRET_FUTURE_FAKE", LS_APPSECRETKEY))
+
+# 해외선물 실전투자 API
+FUTURES_LIVE_APPKEY = os.getenv("FUTURES_LIVE_APPKEY", "")
+FUTURES_LIVE_APPSECRETKEY = os.getenv("FUTURES_LIVE_APPSECRETKEY", "")
 
 # 거래 대상 선물 상품 목록 (홍콩거래소 - 모의투자 지원)
 FUTURES_SYMBOLS = [
