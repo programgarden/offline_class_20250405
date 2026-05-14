@@ -119,8 +119,8 @@ LS API는 국내주식만 일별 시계열(`FOCCQ33600`)을 제공하므로, 해
 
 ### 2. 설치
 ```bash
-git clone https://github.com/programgarden/offline_class_20250405.git
-cd offline_class_20250405
+git clone https://github.com/programgarden/programgarden-ls-edu.git
+cd programgarden-ls-edu
 
 python3 -m venv venv
 source venv/bin/activate
@@ -227,7 +227,7 @@ pytest
 ## 프로젝트 구조
 
 ```
-offline_class_20250405/
+programgarden-ls-edu/
 ├── main.py                     # 시작점 (FastAPI + 3개 봇 통합)
 ├── config.py                   # 환경 설정 (.env + 기본값)
 ├── scheduler.py                # 해외주식 스케줄러
