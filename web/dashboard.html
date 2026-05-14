@@ -143,10 +143,6 @@ tr:hover { background: #ffffff; }
     <div class="card">
       <h2>봇 상태 <span class="badge badge-real">실계좌</span></h2>
       <div class="stat">
-        <div class="stat-label">모드</div>
-        <div id="s-mode-badge"></div>
-      </div>
-      <div class="stat">
         <div class="stat-label">매매 상태</div>
         <div id="s-trading-badge"></div>
       </div>
@@ -156,15 +152,11 @@ tr:hover { background: #ffffff; }
       </div>
       <div class="stat">
         <div class="stat-label">미국 동부시간</div>
-        <div id="s-et-time" style="color:#8b949e;font-size:0.85em">-</div>
+        <div id="s-et-time" style="color:#57606a;font-size:0.85em">-</div>
       </div>
       <div class="controls" style="margin-top:12px">
         <button class="btn btn-success" onclick="stockControl('start')">매매 재개</button>
         <button class="btn btn-danger" onclick="stockControl('stop')">매매 중단</button>
-      </div>
-      <div class="controls">
-        <button class="btn" id="btn-dry" onclick="setMode('dry')">DRY 모드</button>
-        <button class="btn" id="btn-live" onclick="setMode('live')">LIVE 모드</button>
       </div>
     </div>
 
@@ -626,13 +618,6 @@ async function api(path, opts = {}) {
 async function loadStockStatus() {
   try {
     const d = await api('/api/status');
-    const modeEl = document.getElementById('s-mode-badge');
-    modeEl.innerHTML = d.mode === 'live'
-      ? '<span class="badge badge-live">LIVE</span>'
-      : '<span class="badge badge-dry">DRY RUN</span>';
-    document.getElementById('btn-dry').className = 'btn' + (d.mode === 'dry' ? ' btn-active' : '');
-    document.getElementById('btn-live').className = 'btn' + (d.mode === 'live' ? ' btn-active' : '');
-
     const tradingEl = document.getElementById('s-trading-badge');
     if (d.risk_stopped) tradingEl.innerHTML = '<span class="badge badge-warn">리스크 중단</span>';
     else if (d.trading_paused) tradingEl.innerHTML = '<span class="badge badge-off">중단</span>';
