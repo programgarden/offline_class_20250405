@@ -71,6 +71,9 @@ class FuturesScheduler:
         log.info(msg)
         await self.notify(msg)
 
+        # 봇 시작 직후 1회 스냅샷 저장
+        asyncio.create_task(self._job_save_snapshot())
+
     def _setup_schedule(self):
         """스케줄 등록 (홍콩시간 HKT 기준)
         T세션: 09:15~12:00, 13:00~16:30 HKT
@@ -149,6 +152,11 @@ class FuturesScheduler:
         add(self._job_health_check,
             CronTrigger(hour="*/3", minute=30, timezone=HKT),
             id="futures_health_check")
+
+        # 매일 KST 18:10 일일 평가자산 스냅샷 저장 (통합비교 시계열 누적용)
+        add(self._job_save_snapshot,
+            CronTrigger(hour=18, minute=10, timezone=KST),
+            id="futures_save_snapshot")
 
         # 매일 08:00 HKT 심볼 갱신 (롤오버 체크)
         add(self._job_refresh_symbols,
@@ -274,6 +282,18 @@ class FuturesScheduler:
         except Exception as e:
             log.error("[선물] 헬스 체크 중 재연결 실패: %s", e)
             await self.notify(f"[선물] API 세션 재연결 실패: {e}")
+
+    async def _job_save_snapshot(self):
+        """매일 1회 futures_daily_reports에 오늘자 평가자산 저장."""
+        try:
+            snap = await self.client.get_today_snapshot()
+            v = snap.get("eval_asset", 0)
+            if v:
+                today_kst = datetime.now(KST).strftime("%Y-%m-%d")
+                await repo.upsert_futures_daily_equity(today_kst, v)
+                log.info("[선물] 일일 스냅샷 저장 %s: $%s", today_kst, f"{v:,.2f}")
+        except Exception as e:
+            log.warning("[선물] 스냅샷 저장 실패: %s", e)
 
     async def _job_refresh_symbols(self):
         """거래 대상 심볼 갱신 (롤오버 체크)"""

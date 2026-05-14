@@ -119,6 +119,47 @@ CREATE TABLE IF NOT EXISTS futures_specs (
     margin_required REAL,
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS krx_positions (
+    id INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL UNIQUE,
+    name TEXT,
+    quantity INTEGER NOT NULL,
+    avg_buy_price REAL NOT NULL,
+    highest_price REAL NOT NULL,
+    trailing_stop_price REAL NOT NULL,
+    atr REAL NOT NULL,
+    entry_date TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS krx_trades (
+    id INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    name TEXT,
+    order_type TEXT NOT NULL,
+    order_no TEXT,
+    quantity INTEGER NOT NULL,
+    price REAL NOT NULL,
+    amount REAL NOT NULL,
+    reason TEXT,
+    is_dry_run INTEGER DEFAULT 0,
+    executed_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS krx_daily_reports (
+    id INTEGER PRIMARY KEY,
+    report_date TEXT NOT NULL UNIQUE,
+    starting_balance REAL,
+    ending_balance REAL,
+    daily_pnl REAL,
+    daily_pnl_rate REAL,
+    total_trades INTEGER,
+    winning_trades INTEGER,
+    losing_trades INTEGER,
+    risk_stop_triggered INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 DEFAULTS = {
@@ -136,6 +177,14 @@ DEFAULTS = {
     "futures_risk_per_trade": (str(config.FUTURES_RISK_PER_TRADE), "선물 1종목당 리스크 비율(%)"),
     "futures_trading_paused": ("0", "선물 매매 일시 중단 여부"),
     "futures_risk_stopped": ("0", "선물 리스크 청산으로 당일 매매 중단 여부"),
+    # 국내주식 설정
+    "krx_mode": (config.DEFAULT_MODE, "국내주식 운영 모드"),
+    "krx_donchian_period": (str(config.KRX_DONCHIAN_PERIOD), "국내 돈치안 채널 기간"),
+    "krx_atr_multiplier": (str(config.KRX_ATR_MULTIPLIER), "국내 트레일링 스탑 ATR 배수"),
+    "krx_max_stocks": (str(config.KRX_MAX_STOCKS), "국내 최대 보유 종목 수"),
+    "krx_capital_ratio": (str(config.KRX_CAPITAL_RATIO), "국내 예수금 사용 비율(%)"),
+    "krx_trading_paused": ("0", "국내 매매 일시 중단 여부"),
+    "krx_risk_stopped": ("0", "국내 리스크 청산으로 당일 매매 중단 여부"),
 }
 
 

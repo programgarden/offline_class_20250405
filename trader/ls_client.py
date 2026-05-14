@@ -298,6 +298,28 @@ class LSClient:
             "name": resp.block2.IsuNm,
         }
 
+    # ── 오늘자 잔고 스냅샷 (COSOQ00201 OutBlock2) ──
+    # 해외주식 LS API는 과거 BaseDt 시계열을 제공하지 않으므로
+    # 매번 오늘 스냅샷만 가져와 호출자가 DB에 누적 저장한다.
+    async def get_today_snapshot(self) -> dict:
+        try:
+            accno = self.stock.accno()
+            resp = await accno.cosoq00201(
+                body=COSOQ00201InBlock1(RecCnt=1, BaseDt="", CrcyCode="ALL", AstkBalTpCode="00"),
+                options=_rate_opts,
+            ).req_async()
+            if resp.status_code >= 400 or not resp.block2:
+                return {}
+            b = resp.block2
+            return {
+                "won_eval_sum": float(b.WonEvalSumAmt or 0),
+                "ern_rat": float(b.ErnRat or 0),
+                "conv_pnl": float(b.ConvEvalPnlAmt or 0),
+            }
+        except Exception as e:
+            log.warning("해외주식 스냅샷 실패: %s", e)
+            return {}
+
     # ── 재시도 헬퍼 ──────────────────────────────────────
 
     async def _retry_call(self, fn, *args, **kwargs):

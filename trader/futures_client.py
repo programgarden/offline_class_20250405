@@ -264,6 +264,28 @@ class FuturesClient:
                 break
         return result
 
+    # ── 오늘자 평가자산 스냅샷 (CIDBQ03000) ──
+    # LS 해외선물 API는 과거 TrdDt 시계열을 제공하지 않음.
+    async def get_today_snapshot(self) -> dict:
+        try:
+            today = datetime.utcnow().strftime("%Y%m%d")
+            accno = self.futures.accno()
+            resp = await accno.CIDBQ03000(
+                body=CIDBQ03000InBlock1(RecCnt=1, AcntTpCode="1", TrdDt=today),
+                options=_rate_opts,
+            ).req_async()
+            if resp.status_code >= 400 or not resp.block2:
+                return {}
+            for item in resp.block2:
+                return {
+                    "eval_asset": float(item.EvalAssetAmt or 0),
+                    "deposit": float(item.OvrsFutsDps or 0),
+                }
+            return {}
+        except Exception as e:
+            log.warning("해외선물 스냅샷 실패: %s", e)
+            return {}
+
     # ── 미결제 잔고(포지션) 조회 ─────────────────────────
 
     async def get_holdings(self) -> list[dict]:

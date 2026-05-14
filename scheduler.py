@@ -73,6 +73,9 @@ class TurtleScheduler:
         log.info(msg)
         await self.telegram.send(msg)
 
+        # 봇 시작 직후 1회 스냅샷 저장 (실패해도 무시)
+        asyncio.create_task(self._job_save_snapshot())
+
     def _setup_schedule(self):
         """스케줄 등록 (미국 동부시간)"""
         add = self.scheduler.add_job
@@ -128,6 +131,11 @@ class TurtleScheduler:
         # 매 3시간마다 API 세션 헬스 체크 ← 신규 추가
         add(self._job_health_check, CronTrigger(hour="*/3", minute=0, timezone=ET),
             id="health_check")
+
+        # 매일 KST 16:10 (= ET 03:10/04:10) 일일 잔고 스냅샷 저장
+        # 통합비교 차트의 누적 시계열 데이터 누적용 (LS API가 과거 시계열을 안 주므로 매일 저장)
+        add(self._job_save_snapshot, CronTrigger(hour=16, minute=10, timezone=KST),
+            id="save_daily_snapshot")
 
     # ── 스케줄 작업 ──────────────────────────────────────
 
@@ -256,6 +264,18 @@ class TurtleScheduler:
             await self.risk.reset_daily()
         except Exception as e:
             log.exception("리스크 초기화 실패")
+
+    async def _job_save_snapshot(self):
+        """매일 1회 daily_reports에 오늘자 평가금액 저장 (누적 시계열용)."""
+        try:
+            snap = await self.client.get_today_snapshot()
+            v = snap.get("won_eval_sum", 0)
+            if v:
+                today_kst = datetime.now(KST).strftime("%Y-%m-%d")
+                await repo.upsert_daily_balance(today_kst, v)
+                log.info("[해외주식] 일일 스냅샷 저장 %s: %s원", today_kst, f"{v:,.0f}")
+        except Exception as e:
+            log.warning("[해외주식] 스냅샷 저장 실패: %s", e)
 
     async def _job_health_check(self):
         """API 세션 헬스 체크 (예수금 조회로 확인, 실패 시 재연결)"""

@@ -16,7 +16,13 @@ Path(__file__).parent.joinpath("data").mkdir(exist_ok=True)
 from database.models import init_db
 from scheduler import TurtleScheduler
 from futures_scheduler import FuturesScheduler
-from web.api import router as api_router, set_scheduler, set_futures_scheduler
+from krx_scheduler import KrxScheduler
+from web.api import (
+    router as api_router,
+    set_scheduler,
+    set_futures_scheduler,
+    set_krx_scheduler,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,12 +36,13 @@ log = logging.getLogger(__name__)
 
 bot = TurtleScheduler()
 futures_bot: FuturesScheduler | None = None
+krx_bot: KrxScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """앱 시작/종료 시 봇 관리 (해외주식 + 해외선물)"""
-    global futures_bot
+    """앱 시작/종료 시 봇 관리 (해외주식 + 해외선물 + 국내주식)"""
+    global futures_bot, krx_bot
 
     await init_db()
     log.info("데이터베이스 초기화 완료")
@@ -50,6 +57,8 @@ async def lifespan(app: FastAPI):
         "futures_paper_appsecretkey": "FUTURES_LS_APPSECRETKEY",
         "futures_live_appkey": "FUTURES_LIVE_APPKEY",
         "futures_live_appsecretkey": "FUTURES_LIVE_APPSECRETKEY",
+        "krx_appkey": "KRX_APPKEY",
+        "krx_appsecretkey": "KRX_APPSECRETKEY",
     }
     for db_key, cfg_attr in _key_map.items():
         if settings.get(db_key):
@@ -70,8 +79,20 @@ async def lifespan(app: FastAPI):
         log.error("해외선물 봇 시작 실패 (해외주식 봇은 정상 운영): %s", e)
         futures_bot = None
 
+    # 국내주식 봇 시작 (실패해도 다른 봇은 정상 운영)
+    try:
+        krx_bot = KrxScheduler(notify_fn=bot.telegram.send)
+        await asyncio.wait_for(krx_bot.start(), timeout=30)
+        set_krx_scheduler(krx_bot)
+        log.info("국내주식 봇 시작 완료")
+    except Exception as e:
+        log.error("국내주식 봇 시작 실패 (다른 봇은 정상 운영): %s", e)
+        krx_bot = None
+
     yield
 
+    if krx_bot:
+        await krx_bot.stop()
     if futures_bot:
         await futures_bot.stop()
     await bot.stop()

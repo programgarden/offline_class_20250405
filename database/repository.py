@@ -289,6 +289,207 @@ async def get_today_futures_trades() -> list[dict]:
 
 # ── Futures Daily Reports ────────────────────────────────
 
+async def get_futures_daily_reports(days: int = 30) -> list[dict]:
+    """최근 N일치 선물 일일 리포트 (날짜 오름차순)"""
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM futures_daily_reports ORDER BY report_date DESC LIMIT ?",
+            (days,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+    return sorted(rows, key=lambda r: r["report_date"])
+
+
+async def _last_daily_value(table: str, value_col: str,
+                            before_date: str) -> float | None:
+    async with await _connect() as db:
+        cur = await db.execute(
+            f"SELECT {value_col} FROM {table} WHERE report_date < ? "
+            f"ORDER BY report_date DESC LIMIT 1",
+            (before_date,),
+        )
+        row = await cur.fetchone()
+        return row[0] if row and row[0] else None
+
+
+async def upsert_daily_balance(report_date: str, ending_balance: float):
+    """해외주식 스냅샷: ending_balance + 전일 대비 daily_pnl_rate 자동 계산."""
+    prev = await _last_daily_value("daily_reports", "ending_balance", report_date)
+    rate = ((ending_balance / prev) - 1) * 100 if prev else 0.0
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO daily_reports (report_date, ending_balance, daily_pnl_rate)
+               VALUES (?, ?, ?)
+               ON CONFLICT(report_date) DO UPDATE SET
+                 ending_balance = excluded.ending_balance,
+                 daily_pnl_rate = excluded.daily_pnl_rate""",
+            (report_date, ending_balance, rate),
+        )
+        await db.commit()
+
+
+async def upsert_futures_daily_equity(report_date: str, ending_equity: float):
+    """해외선물 스냅샷: ending_equity + 전일 대비 daily_pnl_rate 자동 계산."""
+    prev = await _last_daily_value("futures_daily_reports", "ending_equity", report_date)
+    rate = ((ending_equity / prev) - 1) * 100 if prev else 0.0
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO futures_daily_reports (report_date, ending_equity, daily_pnl_rate)
+               VALUES (?, ?, ?)
+               ON CONFLICT(report_date) DO UPDATE SET
+                 ending_equity = excluded.ending_equity,
+                 daily_pnl_rate = excluded.daily_pnl_rate""",
+            (report_date, ending_equity, rate),
+        )
+        await db.commit()
+
+
+async def upsert_krx_daily_balance(report_date: str, ending_balance: float,
+                                   daily_pnl_rate: float | None = None):
+    """국내주식 스냅샷.
+    daily_pnl_rate가 주어지면 그대로 사용(FOCCQ33600의 TermErnrat),
+    None이면 전일 잔고와의 비율로 자동 계산."""
+    if daily_pnl_rate is None:
+        prev = await _last_daily_value("krx_daily_reports", "ending_balance", report_date)
+        daily_pnl_rate = ((ending_balance / prev) - 1) * 100 if prev else 0.0
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO krx_daily_reports (report_date, ending_balance, daily_pnl_rate)
+               VALUES (?, ?, ?)
+               ON CONFLICT(report_date) DO UPDATE SET
+                 ending_balance = excluded.ending_balance,
+                 daily_pnl_rate = excluded.daily_pnl_rate""",
+            (report_date, ending_balance, daily_pnl_rate),
+        )
+        await db.commit()
+
+
+async def get_daily_reports(days: int = 30) -> list[dict]:
+    """최근 N일치 해외주식 일일 리포트 (날짜 오름차순)"""
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM daily_reports ORDER BY report_date DESC LIMIT ?",
+            (days,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+    return sorted(rows, key=lambda r: r["report_date"])
+
+
+# ══ 국내주식 (KRX) ═══════════════════════════════════════
+
+async def upsert_krx_position(symbol: str, name: str, quantity: int,
+                              avg_buy_price: float, highest_price: float,
+                              trailing_stop_price: float, atr: float,
+                              entry_date: str):
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO krx_positions
+               (symbol, name, quantity, avg_buy_price, highest_price,
+                trailing_stop_price, atr, entry_date, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(symbol) DO UPDATE SET
+                 quantity = excluded.quantity,
+                 avg_buy_price = excluded.avg_buy_price,
+                 highest_price = excluded.highest_price,
+                 trailing_stop_price = excluded.trailing_stop_price,
+                 atr = excluded.atr,
+                 updated_at = datetime('now')""",
+            (symbol, name, quantity, avg_buy_price, highest_price,
+             trailing_stop_price, atr, entry_date),
+        )
+        await db.commit()
+
+
+async def get_krx_positions() -> list[dict]:
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM krx_positions")
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_krx_position(symbol: str) -> dict | None:
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM krx_positions WHERE symbol = ?", (symbol,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_krx_position(symbol: str):
+    async with await _connect() as db:
+        await db.execute("DELETE FROM krx_positions WHERE symbol = ?", (symbol,))
+        await db.commit()
+
+
+async def save_krx_trade(symbol: str, name: str, order_type: str,
+                         order_no: str, quantity: int, price: float,
+                         reason: str, is_dry_run: bool = False):
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT INTO krx_trades
+               (symbol, name, order_type, order_no, quantity, price,
+                amount, reason, is_dry_run)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (symbol, name, order_type, order_no, quantity, price,
+             quantity * price, reason, int(is_dry_run)),
+        )
+        await db.commit()
+
+
+async def get_today_krx_trades() -> list[dict]:
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM krx_trades WHERE executed_at >= ? ORDER BY executed_at DESC",
+            (today,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_last_krx_buy_price(symbol: str) -> float | None:
+    async with await _connect() as db:
+        cur = await db.execute(
+            "SELECT price FROM krx_trades WHERE symbol = ? AND order_type = 'BUY' "
+            "ORDER BY executed_at DESC LIMIT 1",
+            (symbol,),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
+async def save_krx_daily_report(report: dict):
+    async with await _connect() as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO krx_daily_reports
+               (report_date, starting_balance, ending_balance, daily_pnl,
+                daily_pnl_rate, total_trades, winning_trades, losing_trades,
+                risk_stop_triggered)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (report["report_date"], report.get("starting_balance", 0),
+             report.get("ending_balance", 0), report.get("daily_pnl", 0),
+             report.get("daily_pnl_rate", 0), report.get("total_trades", 0),
+             report.get("winning_trades", 0), report.get("losing_trades", 0),
+             report.get("risk_stop_triggered", 0)),
+        )
+        await db.commit()
+
+
+async def get_krx_daily_reports(days: int = 30) -> list[dict]:
+    async with await _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM krx_daily_reports ORDER BY report_date DESC LIMIT ?",
+            (days,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+    return sorted(rows, key=lambda r: r["report_date"])
+
+
+# ── 원본 선물 일일 리포트 저장 함수 (위치 유지) ──────────────────
+
 async def save_futures_daily_report(report: dict):
     async with await _connect() as db:
         await db.execute(
