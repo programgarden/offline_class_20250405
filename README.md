@@ -1,10 +1,27 @@
 # Turtle Trading Bot
 
+## 🌱 프로그램동산 커뮤니티
+
+| | |
+|---|---|
+| 🎥 **YouTube 채널** | <https://youtube.com/@programgarden> |
+| 💬 **카카오톡 단톡방** | <https://open.kakao.com/o/gKVObqUh> |
+| 🌐 **프로그램동산 자동화매매 플랫폼** | <https://programgarden.com> |
+
+[![YouTube](https://img.shields.io/badge/YouTube-%40programgarden-FF0000?logo=youtube&logoColor=white&style=for-the-badge)](https://youtube.com/@programgarden)
+[![KakaoTalk](https://img.shields.io/badge/KakaoTalk-%EB%8B%A8%ED%86%A1%EB%B0%A9-FEE500?logo=kakaotalk&logoColor=000&style=for-the-badge)](https://open.kakao.com/o/gKVObqUh)
+[![Website](https://img.shields.io/badge/Web-programgarden.com-1f6feb?style=for-the-badge)](https://programgarden.com)
+
+> 라이브 강의 · 자료 · 자동화매매 토론은 위 채널에서 만나요.
+
+---
+
 LS증권 API를 이용한 **터틀 트레이딩 자동매매 봇**입니다.
 
-**해외주식**(미국 NYSE/NASDAQ)과 **해외선물**(홍콩 HKEX)을 동시에 자동 매매하며,
+**해외주식**(미국 NYSE/NASDAQ), **국내주식**(KRX), **해외선물**(홍콩 HKEX) 3개 시장을 동시에 자동 매매하며,
 돈치안 채널 돌파 매수 + ATR 기반 트레일링 스탑 매도 전략으로 24시간 자동 운영됩니다.
-텔레그램과 웹 대시보드로 원격 제어할 수 있습니다.
+**라이트 테마 웹 대시보드**와 텔레그램으로 원격 제어하고, 4개 시리즈(해외주식·국내주식·해외선물·코스피지수)
+**누적 수익률 통합 비교 차트**를 한 화면에서 볼 수 있습니다.
 
 ---
 
@@ -12,164 +29,149 @@ LS증권 API를 이용한 **터틀 트레이딩 자동매매 봇**입니다.
 
 ```mermaid
 graph TB
-    subgraph 스케줄러["메인 스케줄러 (24시간)"]
-        AN[종목 분석기]
-        TE[주식 매매 엔진]
-        FE[선물 매매 엔진]
-        RM[리스크 관리자]
-        RT[실시간 모니터]
+    subgraph 봇["3-시장 봇 (24시간)"]
+        SS[해외주식 스케줄러]
+        KS[국내주식 스케줄러]
+        FS[해외선물 스케줄러]
     end
 
     WEB[웹 대시보드<br/>FastAPI :8000]
     TG[텔레그램 봇]
-    DB[(SQLite DB)]
+    DB[(SQLite<br/>trading.db)]
     LS[LS증권 API]
+    YF[yfinance<br/>^KS11]
 
-    AN -->|분석 결과 저장| DB
-    AN -->|종목 리스트/차트| LS
-    TE -->|주식 매수/매도 주문| LS
-    TE -->|포지션/거래 기록| DB
-    FE -->|선물 매수/매도 주문| LS
-    FE -->|포지션/거래 기록| DB
-    RM -->|예수금/보유종목 조회| LS
-    RM -->|리스크 청산 명령| TE
-    RM -->|리스크 청산 명령| FE
-    RT -->|실시간 체결 WebSocket| LS
-    RT -->|가격 변동 시 스탑 체크| TE
-    RT -->|가격 변동 시 스탑 체크| FE
-    TG -->|알림 전송| 사용자
-    사용자 -->|명령어| TG
-    TG -->|설정 변경/조회| DB
-    WEB -->|상태/설정 조회| DB
-    WEB -->|예수금/보유종목| LS
-    사용자 -->|브라우저 접속| WEB
+    SS -->|매매/스냅샷| LS
+    KS -->|매매/FOCCQ33600 시계열| LS
+    FS -->|매매/스냅샷| LS
+    SS -->|daily_reports| DB
+    KS -->|krx_daily_reports| DB
+    FS -->|futures_daily_reports| DB
+    TG -->|알림 + 명령어| 사용자
+    WEB -->|통합비교 차트| YF
+    WEB -->|상태/설정/매매내역| DB
+    WEB -->|실시간 평가금| LS
+    사용자 -->|브라우저| WEB
 ```
 
-## 매매 흐름
-
-### 해외주식 (NYSE/NASDAQ)
+## 매매 흐름 (3개 시장 공통)
 
 ```mermaid
-flowchart TD
-    A[장 마감 후 17:00 ET] --> B[종목 스크리닝]
-    B --> B1[NYSE + NASDAQ 전체 종목 수집]
-    B1 --> B2[재무 필터: 시총 $1B+, 부채비율, PER, 영업이익]
-    B2 --> B3[추세 분석: 돈치안 채널, ATR, 이동평균, 모멘텀]
-    B3 --> B4[종합 점수 상위 5개 선정]
-    B4 --> C{돈치안 채널 돌파?}
-
-    C -->|현재가 > 20일 최고가| D[매수 주문]
-    C -->|미돌파| C
-
-    D --> D1[포지션 크기 = 예수금 x 50% / 종목수]
-    D1 --> D2[트레일링 스탑 = 매수가 - ATR x 3.0]
-    D2 --> E[보유 중 실시간 감시]
-
+flowchart LR
+    A[일별 신호 체크] --> B{매수 신호 기간<br/>N일 최고가 돌파?}
+    B -->|돌파| C[매수/진입 주문]
+    B -->|미돌파| A
+    C --> D[손절가 = 현재가 − ATR × 배수]
+    D --> E[보유 중 감시]
     E --> F{가격 변동}
-    F -->|신고가 갱신| G[스탑 가격 상향 조정]
-    G --> E
-    F -->|스탑 가격 이하| H[매도 체결]
-
-    E --> I{일일 손실률 체크}
-    I -->|4% 이상| J[마이너스 종목 청산]
-    I -->|5% 이상| K[전종목 청산 + 매매 중단]
+    F -->|신고가 갱신| G[손절가 상향 조정] --> E
+    F -->|손절가 이하| H[매도/청산]
+    E --> I{일일 손실률}
+    I -->|경고 한도 초과| J[마이너스 종목 청산]
+    I -->|비상 한도 초과| K[전종목 청산 + 당일 매매 중단]
 ```
 
-### 해외선물 (홍콩 HKEX)
+각 시장별 거래 시간 (한국시간 KST):
+- **해외주식 NYSE/NASDAQ**: 정규장 22:30~05:00 (서머타임 기준)
+- **국내주식 KRX**: 09:00~15:30
+- **해외선물 HKEX**: T세션 10:15~13:00 + 14:00~17:30 / T+1세션(야간) 18:15~04:00
 
-거래 대상: 미니 항셍지수(HMH), 미니 H주지수(HMCE), MSCI China A50(MCA), 항셍지수(HSI), 항셍테크지수(HTI), H주지수(HCEI)
+---
 
-동일한 터틀 전략을 적용하되, 선물 특성에 맞게 증거금 기반 포지션 사이징과 리스크 관리를 사용합니다.
+## 웹 대시보드
 
-## 일일 스케줄
+라이트 테마 단일 페이지 5개 탭:
 
-```mermaid
-gantt
-    title 일일 운영 스케줄 (미국 동부시간 ET)
-    dateFormat HH:mm
-    axisFormat %H:%M
+| 탭 | 설명 |
+|---|---|
+| 📈 **해외주식** | LS 실계좌. 모드(DRY/LIVE) · 계좌 · 보유종목 · 일봉차트 · 전략 · API키 · 오늘 매매 |
+| 🇰🇷 **국내주식** | LS 실계좌. 동일 구성 (KRX 종목 코드 기준) |
+| 📊 **해외선물** | LS 모의투자. 동일 구성 (홍콩 HKEX 6개 상품) |
+| 📉 **통합비교** | 4시리즈 누적 수익률 차트 — 해외주식·국내주식·해외선물·코스피지수(^KS11) |
+| 📋 **로그** | 시스템 로그 실시간 보기 |
 
-    section 분석
-    장마감 리포트           :done, 06:30, 30min
-    리스크 초기화           :done, 07:00, 10min
-    종목 스크리닝           :active, 17:00, 30min
+**통합비교 차트**
+- 기간 선택: 7 / 14 / 30(기본) / 60 / 90일
+- 일별 수익률 누적 곱셈 `Π(1 + rᵢ) − 1` → 입출금 영향 제외된 정확한 누적수익률
+- 국내주식: LS `FOCCQ33600` TR의 `TermErnrat` 시계열을 그대로 사용
+- 해외주식/선물: LS API가 시계열을 안 주므로 봇이 매일 평가금 스냅샷을 DB에 누적
+- 코스피지수: yfinance `^KS11` 종가, **캐시 없이** 매 새로고침마다 새로 조회
 
-    section 주간거래
-    프리마켓 매수 체크 (30분 간격) :04:00, 240min
+## 일별 스냅샷 누적
 
-    section 정규장
-    정규장 매수 체크 (15분 간격)  :09:30, 390min
-    트레일링 스탑 (5분 간격)      :09:30, 390min
-    실시간 모니터링               :09:30, 390min
-    리스크 감시 (1분 간격)        :09:30, 390min
-    장마감 정리                  :16:05, 10min
-```
+LS API는 국내주식만 일별 시계열(`FOCCQ33600`)을 제공하므로, 해외주식·해외선물은
+봇이 직접 매일 평가금을 DB에 누적 저장합니다.
 
-홍콩 선물 거래 시간 (한국시간 KST):
-- T세션: 10:15~13:00, 14:00~17:30
-- T+1세션(야간): 18:15~04:00
+| 시장 | 저장 시각 (KST) | TR |
+|---|---|---|
+| 해외주식 | 봇 시작 시 + 매일 16:10 | `COSOQ00201` 오늘 스냅샷 |
+| 해외선물 | 봇 시작 시 + 매일 18:10 | `CIDBQ03000` 오늘 스냅샷 |
+| 국내주식 | 봇 시작 시 + 매일 15:40 | `FOCCQ33600` 시계열 백필 |
 
 ---
 
 ## 실행 방법
 
 ### 1. 사전 준비
-
 - **Python 3.13+**
-- **LS증권 계좌** + API 키 발급 ([LS증권 Open API](https://openapi.ls-sec.co.kr/))
-- **텔레그램 봇** 생성 ([BotFather](https://t.me/BotFather))
+- **LS증권 계좌** + API 키 ([LS증권 Open API](https://openapi.ls-sec.co.kr/))
+- **텔레그램 봇** (선택, [BotFather](https://t.me/BotFather))
 
 ### 2. 설치
-
 ```bash
-# 프로젝트 클론
 git clone https://github.com/programgarden/offline_class_20250405.git
 cd offline_class_20250405
 
-# 가상환경 생성 및 활성화
 python3 -m venv venv
 source venv/bin/activate
-
-# 의존성 설치
 pip install -r requirements.txt
 ```
 
 ### 3. 환경 설정
-
 ```bash
 cp .env.example .env
 ```
 
-`.env` 파일을 열어 API 키를 입력합니다:
+`.env` 파일에 LS증권 API 키를 입력:
 
 ```env
-# LS증권 API (해외주식 실전계좌)
+# LS증권 - 해외주식 실전계좌
 LS_APPKEY=your_appkey_here
 LS_APPSECRETKEY=your_appsecretkey_here
 
-# LS증권 API (해외선물 모의투자) - 미설정 시 위 키 사용
-FUTURES_LS_APPKEY=your_futures_appkey_here
-FUTURES_LS_APPSECRETKEY=your_futures_appsecretkey_here
+# LS증권 - 국내주식 실전계좌
+APPKEY_KOREA=your_korea_appkey_here
+APPSECRET_KOREA=your_korea_appsecretkey_here
 
-# LS증권 API (해외선물 실전투자) - 선택사항
+# LS증권 - 해외선물 모의투자
+APPKEY_FUTURE_FAKE=your_futures_paper_appkey_here
+APPSECRET_FUTURE_FAKE=your_futures_paper_appsecretkey_here
+
+# LS증권 - 해외선물 실전투자 (선택)
 FUTURES_LIVE_APPKEY=
 FUTURES_LIVE_APPSECRETKEY=
 
-# 텔레그램 봇
+# 텔레그램 봇 (선택)
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_ID=your_chat_id_here
 ```
 
-### 4. 실행
+> API 키는 웹 대시보드에서도 설정 가능합니다 (DB 저장). 시작 시 DB → config 순서로 로드됩니다.
 
+### 4. 실행
 ```bash
 source venv/bin/activate
 python3 main.py
 ```
 
+기본 포트가 사용 중이면:
+```bash
+./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001
+```
+
 `data/` 디렉터리는 최초 실행 시 자동 생성됩니다.
 
-실행하면 **웹 대시보드**(http://localhost:8000)와 **트레이딩 봇**(해외주식 + 해외선물)이 함께 시작됩니다.
+실행하면 **웹 대시보드**(http://localhost:8000)와 **3개 봇**(해외주식 · 국내주식 · 해외선물)이 함께 시작됩니다.
 기본값은 **드라이런 모드**(실제 주문 없이 시뮬레이션)입니다.
 
 백그라운드 실행:
@@ -178,33 +180,42 @@ nohup python3 main.py > data/bot.log 2>&1 &
 ```
 
 ### 5. 테스트
-
 ```bash
-pytest                    # 전체 테스트
-pytest tests/test_xxx.py  # 개별 테스트
+pytest
 ```
 
-### 6. 제어 방법
+---
 
-#### 웹 대시보드 (http://localhost:8000)
+## 핵심 전략 파라미터
 
-브라우저에서 접속하여 실시간으로 봇을 제어할 수 있습니다:
-- 봇 상태 / 예수금 / 보유종목 실시간 확인
-- 모드 전환 (DRY / LIVE)
-- 매매 중단 / 재개
-- 전략 파라미터 변경 (돈치안, ATR, 종목 수, 예수금 비율)
-- 오늘 매매 내역 조회
-- 로그 실시간 확인
+| 파라미터 | 기본값 | UI 표시명 | 의미 |
+|---|---|---|---|
+| `donchian_period` | 20 | **매수 신호 기간 (일)** | 최근 N일 중 최고가 돌파 시 매수/진입 |
+| `atr_multiplier` | 3.0 | **손절 폭 배수** | 가격 변동폭(ATR) × 배수 = 손절 거리 |
+| `max_stocks` | 5 | 최대 종목/계약 수 | 동시 보유 한도 |
+| `capital_ratio` | 50% | 예수금 비율 | 매매에 사용할 예수금 비율 |
 
-#### 텔레그램 봇
+모두 3개 시장별로 독립 설정 가능 (`donchian_period`, `krx_donchian_period`, `futures_donchian_period`).
+
+### 리스크 한도
+
+| 시장 | 일일 손실 경고 | 일일 손실 비상 |
+|---|---|---|
+| 해외주식 | 4% (마이너스 종목 청산) | 5% (전종목 청산 + 매매 중단) |
+| 국내주식 | 4% | 5% |
+| 해외선물 | 3% (증거금 대비) | 5% + 증거금 80% 한도 초과 시 진입 차단 |
+
+---
+
+## 텔레그램 명령어
 
 | 명령어 | 설명 |
 |--------|------|
 | `/help` | 명령어 목록 |
 | `/status` | 보유종목, 모드, 상태 |
 | `/mode dry` / `/mode live` | 모드 전환 |
-| `/set channel 20` | 돈치안 채널 기간 변경 |
-| `/set atr 3.0` | 트레일링 스탑 ATR 배수 |
+| `/set channel 20` | 매수 신호 기간 변경 |
+| `/set atr 3.0` | 손절 폭 배수 변경 |
 | `/set stocks 5` | 최대 보유 종목 수 |
 | `/set ratio 50` | 예수금 사용 비율(%) |
 | `/settings` | 전체 설정값 보기 |
@@ -217,90 +228,58 @@ pytest tests/test_xxx.py  # 개별 테스트
 
 ```
 offline_class_20250405/
-├── main.py                     # 시작점 (FastAPI + 스케줄러 통합)
-├── config.py                   # 환경 설정 (.env 로드 + 기본값)
-├── scheduler.py                # 해외주식 스케줄러 (24시간 루프)
-├── futures_scheduler.py        # 해외선물 스케줄러 (홍콩 HKEX)
+├── main.py                     # 시작점 (FastAPI + 3개 봇 통합)
+├── config.py                   # 환경 설정 (.env + 기본값)
+├── scheduler.py                # 해외주식 스케줄러
+├── krx_scheduler.py            # 국내주식 스케줄러
+├── futures_scheduler.py        # 해외선물 스케줄러
 ├── analyzer/
-│   ├── stock_screener.py       # 종목 스크리닝 (재무 + 추세)
-│   └── trend_analyzer.py       # 기술적 분석 (돈치안, ATR, MA)
+│   ├── stock_screener.py       # 해외주식 종목 스크리닝
+│   └── trend_analyzer.py       # 기술적 분석
 ├── trader/
-│   ├── ls_client.py            # LS증권 해외주식 API 래퍼
-│   ├── engine.py               # 해외주식 매매 엔진
-│   ├── realtime.py             # 해외주식 WebSocket 실시간 모니터링
-│   ├── futures_client.py       # LS증권 해외선물 API 래퍼
-│   ├── futures_engine.py       # 해외선물 매매 엔진
-│   └── futures_realtime.py     # 해외선물 WebSocket 실시간 모니터링
+│   ├── ls_client.py            # 해외주식 API 래퍼
+│   ├── engine.py / realtime.py # 해외주식 엔진 + 실시간
+│   ├── krx_client.py           # 국내주식 API 래퍼 (NEW)
+│   ├── krx_engine.py           # 국내주식 매매 엔진 (NEW)
+│   ├── futures_client.py       # 해외선물 API 래퍼
+│   └── futures_engine.py / futures_realtime.py
 ├── risk/
-│   ├── risk_manager.py         # 해외주식 리스크 관리 (4%/5% 손실 한도)
-│   └── futures_risk.py         # 해외선물 리스크 관리 (증거금 기반)
-├── tgbot/
-│   └── bot.py                  # 텔레그램 봇 (알림 + 명령어)
+│   ├── risk_manager.py         # 해외주식 리스크
+│   └── futures_risk.py         # 해외선물 리스크
+├── tgbot/bot.py                # 텔레그램 봇
 ├── web/
-│   ├── api.py                  # REST API (FastAPI 라우터)
-│   └── dashboard.html          # 웹 대시보드 (단일 HTML)
+│   ├── api.py                  # REST API (KRX + 통합비교 + 코스피 포함)
+│   └── dashboard.html          # 라이트 테마 단일 HTML (5개 탭)
 ├── database/
-│   ├── models.py               # DB 스키마 정의
-│   └── repository.py           # DB 읽기/쓰기
+│   ├── models.py               # DB 스키마 (krx_* 테이블 추가)
+│   └── repository.py
 ├── tests/                      # 테스트 코드
-│   ├── conftest.py
-│   ├── test_database.py
-│   ├── test_futures_client.py
-│   ├── test_position_sizing.py
-│   ├── test_risk.py
-│   ├── test_trend_analyzer.py
-│   └── test_web_api.py
-├── data/
-│   ├── trading.db              # SQLite 데이터베이스 (자동 생성)
-│   └── turtle.log              # 실행 로그
-├── .env                        # API 키 (비공개)
-├── .env.example                # 환경변수 템플릿
-└── requirements.txt            # 의존성 목록
+├── data/                       # 런타임 (DB, 로그) — 자동 생성
+├── .env / .env.example         # API 키
+└── requirements.txt
 ```
 
-## 핵심 전략 파라미터
-
-### 해외주식
-
-| 파라미터 | 기본값 | 설명 |
-|---------|--------|------|
-| 돈치안 채널 기간 | 20일 | 매수 신호 기준 (N일 최고가 돌파) |
-| ATR 기간 | 20일 | 변동성 계산 기간 |
-| ATR 배수 | 3.0 | 트레일링 스탑 거리 (ATR x 배수) |
-| 최대 보유 종목 | 5개 | 동시 보유 가능 종목 수 |
-| 예수금 사용 비율 | 50% | 전체 예수금 중 매매에 사용할 비율 |
-| 일일 손실 경고 | 4% | 마이너스 종목 청산 |
-| 일일 손실 비상 | 5% | 전종목 청산 + 당일 매매 중단 |
-
-### 해외선물
-
-| 파라미터 | 기본값 | 설명 |
-|---------|--------|------|
-| 돈치안 채널 기간 | 20일 | 매수 신호 기준 |
-| ATR 기간 | 20일 | 변동성 계산 기간 |
-| ATR 배수 | 3.0 | 트레일링 스탑 거리 |
-| 최대 동시 보유 | 5종목 | 동시 보유 가능 종목 수 |
-| 1종목 리스크 | 2% | 예수금 대비 리스크 비율 |
-| 손실 경고 | 3% | 증거금 대비 마이너스 종목 청산 |
-| 손실 비상 | 5% | 전종목 청산 + 매매 중단 |
-| 증거금 한도 | 80% | 초과 시 신규 진입 차단 |
+---
 
 ## 기술 스택
 
 | 항목 | 기술 |
 |------|------|
-| 증권 API | [programgarden-finance](https://pypi.org/project/programgarden-finance/) 1.4.3 |
-| 웹 대시보드 | FastAPI + uvicorn |
+| 증권 API | [programgarden-finance](https://pypi.org/project/programgarden-finance/) |
+| 웹 대시보드 | FastAPI + uvicorn + lightweight-charts |
 | 비동기 | asyncio + aiosqlite |
 | 스케줄러 | APScheduler |
 | 데이터베이스 | SQLite |
-| 재무 데이터 | yfinance |
+| 벤치마크 데이터 | yfinance (`^KS11` 코스피지수) |
 | 알림/제어 | python-telegram-bot |
+
+---
 
 ## 주의사항
 
 - **드라이런 모드로 먼저 충분히 테스트** 후 실전 전환하세요.
 - 실전 모드에서는 **실제 주문이 체결**됩니다. 손실 위험이 있습니다.
-- 리스크 관리(주식 4%/5%, 선물 3%/5% 한도)가 정상 동작하는지 반드시 확인하세요.
-- 해외선물은 **모의투자**가 기본이며, 실전 API 키를 설정하면 실전 거래가 가능합니다.
+- 리스크 관리 한도(주식 4%/5%, 선물 3%/5%)가 정상 동작하는지 반드시 확인하세요.
 - API 키는 `.env` 파일에만 저장하고, **절대 커밋하지 마세요.**
+- 본 프로젝트는 교육/연구 목적이며, 운영 손익에 대한 책임은 사용자 본인에게 있습니다.
+
